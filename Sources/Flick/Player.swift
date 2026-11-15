@@ -9,6 +9,7 @@ enum LoadFailure: Equatable {
 struct PlaybackState: Equatable {
     var url: URL?
     var title: String?
+    var thumbnail: URL?
     var isLoading = false
     var loadFailure: LoadFailure?
     var isBuffering = false
@@ -261,6 +262,7 @@ final class Player {
               let result = mpv.string("user-data/mpv/ytdl/json-subprocess-result"),
               let info = YtdlInfo(subprocessResult: result) else { return }
         state.resolutions = info.resolutions
+        state.thumbnail = info.thumbnail
         onStateChange?(state)
         guard let cookie = info.signedSegmentCookie else { return }
         mpv.command("change-list", "file-local-options/http-header-fields", "append", "Cookie: \(cookie)")

@@ -31,6 +31,12 @@ Prefer the Terminal? This does the same thing:
 xattr -dr com.apple.quarantine /Applications/Flick.app && open /Applications/Flick.app
 ```
 
+## Library
+
+Everything you play, whether a file or a YouTube, Loom or other link, goes into the library with its title, thumbnail and how far you got. Open Flick without a video to see it, or press ⌘L while watching (⌘L or Esc takes you back). **Add Link…** and **Add Files…** save things to watch later without playing them. Right-click an item to remove it, copy its link or show the file in Finder. The library is stored in `~/Library/Application Support/Flick/library.json`.
+
+<img src="docs/library.png" width="540" alt="Library window with a Loom link, a YouTube video and a local file">
+
 ## Speed
 
 `make bench` launches the app on 1080p H.264, 4K HEVC (MKV) and 720p VP9 (WebM) files and measures the time from `open` to the first frame visible on screen. The check fails above 1000 ms.

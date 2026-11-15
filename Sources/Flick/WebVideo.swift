@@ -28,10 +28,21 @@ extension URL {
 }
 
 struct YtdlInfo {
+    let title: String?
+    let duration: Double?
+    let thumbnail: URL?
     private let formats: [[String: Any]]
 
     init?(subprocessResult: String) {
-        guard let output = Self.jsonObject(subprocessResult)?["stdout"] as? String, let info = Self.jsonObject(output) else { return nil }
+        guard let output = Self.jsonObject(subprocessResult)?["stdout"] as? String else { return nil }
+        self.init(json: output)
+    }
+
+    init?(json: String) {
+        guard let info = Self.jsonObject(json) else { return nil }
+        title = info["title"] as? String
+        duration = info["duration"] as? Double
+        thumbnail = (info["thumbnail"] as? String).flatMap(URL.init(webVideoString:))
         formats = (info["requested_formats"] as? [[String: Any]] ?? []) + (info["formats"] as? [[String: Any]] ?? [])
     }
 
@@ -51,6 +62,36 @@ struct YtdlInfo {
     private static func jsonObject(_ text: String) -> [String: Any]? {
         guard let data = text.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+}
+
+struct WebVideoLookup {
+    let executable: URL
+
+    static var installed: WebVideoLookup? {
+        HomebrewTools.ytdlp.map(WebVideoLookup.init(executable:))
+    }
+
+    func info(for url: URL) async -> YtdlInfo? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(returning: run(for: url))
+            }
+        }
+    }
+
+    private func run(for url: URL) -> YtdlInfo? {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = executable
+        process.arguments = ["--dump-single-json", "--no-playlist", "--skip-download", "--no-warnings", url.absoluteString]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        return YtdlInfo(json: String(decoding: data, as: UTF8.self))
     }
 }
 
@@ -79,7 +120,9 @@ enum HomebrewTools {
         setenv("PATH", (directories + [inherited]).joined(separator: ":"), 1)
     }
 
-    static var hasYtdlp: Bool {
-        directories.contains { FileManager.default.isExecutableFile(atPath: "\($0)/yt-dlp") }
+    static var hasYtdlp: Bool { ytdlp != nil }
+
+    static var ytdlp: URL? {
+        directories.lazy.map { URL(fileURLWithPath: $0).appending(path: "yt-dlp") }.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 }

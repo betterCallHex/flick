@@ -9,12 +9,14 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     static let controlsHeight: CGFloat = 44
 
     private let player: Player
+    private let library: Library
+    private let lookup = WebVideoLookup.installed
     private let playerView: PlayerView
     private let controls = ControlsView()
     private let hud = PillLabel(fontSize: 13)
     private let status = PillLabel(fontSize: 13)
     private let titleShade = TitleShade()
-    private let emptyState = EmptyStateView()
+    private let libraryView: LibraryView
     private var previousState = PlaybackState()
     private var displayedVideoSize: CGSize?
     private var isWaitingToShow = false
@@ -28,8 +30,10 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     var hasFile: Bool { player.state.url != nil }
 
-    init(player: Player, videoLayer: VideoLayer) {
+    init(player: Player, library: Library, videoLayer: VideoLayer) {
         self.player = player
+        self.library = library
+        libraryView = LibraryView(library: library)
         playerView = PlayerView(videoLayer: videoLayer)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 540),
@@ -50,11 +54,17 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     func open(_ url: URL) {
         guard let window else { return }
+        library.record(player.state)
+        library.notePlayed(url)
+        libraryView.isHidden = true
+        guard url.libraryKey != player.state.url?.libraryKey || player.state.loadFailure != nil else {
+            resumeFromLibrary()
+            return
+        }
         player.open(url)
         window.title = url.isFileURL ? url.lastPathComponent : url.displayHost
         window.representedURL = url.isFileURL ? url : nil
         window.standardWindowButton(.documentIconButton)?.image = NSApp.applicationIconImage
-        emptyState.isHidden = true
         if url.isFileURL { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
         guard !window.isVisible else {
             revealChrome()
@@ -69,11 +79,45 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         }
     }
 
-    func showEmptyState() {
-        emptyState.isHidden = false
-        window?.setContentSize(NSSize(width: 640, height: 400))
-        window?.center()
-        window?.makeKeyAndOrderFront(nil)
+    func showLibrary() {
+        libraryView.isHidden = false
+        controls.isHidden = true
+        setChromeVisible(true)
+        guard hasFile else {
+            window?.setContentSize(libraryView.isEmpty ? NSSize(width: 640, height: 400) : NSSize(width: 960, height: 620))
+            window?.center()
+            window?.makeKeyAndOrderFront(nil)
+            return
+        }
+        library.record(player.state)
+        if !player.state.isPaused { player.togglePause() }
+    }
+
+    func recordProgress() {
+        library.record(player.state)
+    }
+
+    @objc func toggleLibrary(_ sender: Any?) {
+        guard libraryView.isHidden || !hasFile else { return resumeFromLibrary() }
+        showLibrary()
+    }
+
+    @objc func addFilesToLibrary(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = AppDelegate.playableContentTypes
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        panel.urls.forEach(library.save)
+    }
+
+    @objc func addLinkToLibrary(_ sender: Any?) {
+        guard let url = LinkPrompt.ask(title: "Add a video link to your library", button: "Add") else { return }
+        library.save(url)
+        guard url.resolvesThroughYtdl, let lookup else { return }
+        Task { @MainActor [library] in
+            guard let info = await lookup.info(for: url) else { return }
+            library.describe(url, with: info)
+        }
     }
 
     func revealChrome() {
@@ -82,7 +126,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     }
 
     func hideChromeIfIdle() {
-        guard hasFile, !player.state.isPaused, !player.state.isAtEnd, !controls.isHovered, !controls.isScrubbing else { return }
+        guard hasFile, libraryView.isHidden, !player.state.isPaused, !player.state.isAtEnd, !controls.isHovered, !controls.isScrubbing else { return }
         setChromeVisible(false)
         if playerView.isMouseInside { NSCursor.setHiddenUntilMouseMoves(true) }
     }
@@ -123,6 +167,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     }
 
     func handleEscape() {
+        guard libraryView.isHidden || !hasFile else { return resumeFromLibrary() }
         guard isFullScreen else { return }
         window?.toggleFullScreen(nil)
     }
@@ -194,13 +239,13 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(paste(_:)):
+        case #selector(paste(_:)), #selector(toggleLibrary(_:)), #selector(addFilesToLibrary(_:)), #selector(addLinkToLibrary(_:)):
             return true
         case #selector(toggleSubtitles(_:)):
             menuItem.state = player.state.isShowingSubtitles ? .on : .off
             return player.state.hasSubtitles
         default:
-            return hasFile
+            return hasFile && libraryView.isHidden
         }
     }
 
@@ -238,7 +283,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         controls.onPickResolution = { [weak self] resolution in self?.player.limitResolution(to: resolution) }
         hud.alphaValue = 0
         status.isHidden = true
-        for overlay in [titleShade, emptyState, controls, hud, status] as [NSView] {
+        for overlay in [titleShade, libraryView, controls, hud, status] as [NSView] {
             overlay.translatesAutoresizingMaskIntoConstraints = false
             playerView.addSubview(overlay)
         }
@@ -250,8 +295,10 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             titleShade.leadingAnchor.constraint(equalTo: playerView.leadingAnchor),
             titleShade.trailingAnchor.constraint(equalTo: playerView.trailingAnchor),
             titleShade.heightAnchor.constraint(equalToConstant: 72),
-            emptyState.centerXAnchor.constraint(equalTo: playerView.centerXAnchor),
-            emptyState.centerYAnchor.constraint(equalTo: playerView.centerYAnchor),
+            libraryView.topAnchor.constraint(equalTo: playerView.topAnchor),
+            libraryView.bottomAnchor.constraint(equalTo: playerView.bottomAnchor),
+            libraryView.leadingAnchor.constraint(equalTo: playerView.leadingAnchor),
+            libraryView.trailingAnchor.constraint(equalTo: playerView.trailingAnchor),
             controls.centerXAnchor.constraint(equalTo: playerView.centerXAnchor),
             controls.bottomAnchor.constraint(equalTo: playerView.bottomAnchor, constant: -sideMargin),
             controls.heightAnchor.constraint(equalToConstant: Self.controlsHeight),
@@ -263,7 +310,9 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             status.centerXAnchor.constraint(equalTo: playerView.centerXAnchor),
             status.centerYAnchor.constraint(equalTo: playerView.centerYAnchor),
         ])
-        emptyState.onOpen = { NSApp.sendAction(#selector(AppDelegate.openDocument(_:)), to: nil, from: nil) }
+        libraryView.onPlay = { [weak self] url in self?.open(url) }
+        libraryView.onAddFiles = { [weak self] in self?.addFilesToLibrary(nil) }
+        libraryView.onAddLink = { [weak self] in self?.addLinkToLibrary(nil) }
     }
 
     private func bindPlayer() {
@@ -273,6 +322,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     private func render(_ state: PlaybackState) {
         controls.update(with: state)
         renderStatus(of: state)
+        if state.hasNewsForLibrary(since: previousState) { library.record(state) }
         if let failure = state.loadFailure, previousState.loadFailure == nil, let url = state.url {
             showLoadFailure(failure, for: url)
         }
@@ -289,10 +339,17 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     }
 
     private func renderStatus(of state: PlaybackState) {
-        controls.isHidden = state.url == nil || state.isLoading
+        controls.isHidden = state.url == nil || state.isLoading || !libraryView.isHidden
         if let url = state.url, !url.isFileURL, let title = state.title, !state.isLoading { window?.title = title }
         status.isHidden = !(state.isLoading || state.isBuffering) || state.url?.isFileURL == true
         status.text = state.isLoading ? "Loading \(state.url?.displayHost ?? "video")…" : "Buffering…"
+    }
+
+    private func resumeFromLibrary() {
+        libraryView.isHidden = true
+        controls.isHidden = player.state.isLoading
+        if player.state.isPaused { player.togglePause() }
+        revealChrome()
     }
 
     private func fit(to videoSize: CGSize) {
@@ -534,6 +591,13 @@ final class EmptyStateView: NSStackView {
 
     @objc private func openPressed() {
         onOpen?()
+    }
+}
+
+extension PlaybackState {
+    func hasNewsForLibrary(since previous: PlaybackState) -> Bool {
+        title != previous.title || thumbnail != previous.thumbnail || duration != previous.duration
+            || isPaused != previous.isPaused || isAtEnd != previous.isAtEnd || isLoading != previous.isLoading
     }
 }
 

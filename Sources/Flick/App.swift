@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let volumeKey = "volume"
     static let subtitlesKey = "showsSubtitles"
     static let firstFrameProbeVariable = "FLICK_FIRST_FRAME_FILE"
+    static let playableContentTypes: [UTType] = [.movie, .video, .audiovisualContent, .audio]
 
     private var controller: PlayerWindowController?
     private var player: Player?
@@ -42,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let controller, !controller.hasFile else { return }
-        controller.showEmptyState()
+        controller.showLibrary()
         NSApp.activate()
     }
 
@@ -52,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         guard let player else { return }
+        controller?.recordProgress()
         player.saveResumePoint()
         UserDefaults.standard.set(player.state.volume, forKey: Self.volumeKey)
         UserDefaults.standard.set(player.state.areSubtitlesVisible, forKey: Self.subtitlesKey)
@@ -63,28 +65,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.movie, .video, .audiovisualContent, .audio]
+        panel.allowedContentTypes = Self.playableContentTypes
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         controller?.open(url)
     }
 
     @objc func openLocation(_ sender: Any?) {
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
-        field.placeholderString = "https://www.youtube.com/watch?v=…"
-        field.stringValue = NSPasteboard.general.string(forType: .string).flatMap(URL.init(webVideoString:))?.absoluteString ?? ""
-        let alert = NSAlert()
-        alert.messageText = "Open a video link"
-        alert.informativeText = "YouTube, Loom, Vimeo, public Drive or Dropbox links, or a direct video URL."
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Play")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard let url = URL(webVideoString: field.stringValue) else {
-            NSSound.beep()
-            return
-        }
+        guard let url = LinkPrompt.ask(title: "Open a video link", button: "Play") else { return }
         controller?.open(url)
     }
 
@@ -99,7 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let player = Player(mpv: mpv)
         let videoLayer = try VideoLayer(mpv: mpv)
         self.player = player
-        let controller = PlayerWindowController(player: player, videoLayer: videoLayer)
+        let library = Library(file: Self.libraryFile)
+        let controller = PlayerWindowController(player: player, library: library, videoLayer: videoLayer)
         self.controller = controller
         firstFrameProbe = FirstFrameProbe(environment: ProcessInfo.processInfo.environment)
         firstFrameProbe?.attach(to: videoLayer, controller: controller)
@@ -107,6 +96,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private static var watchLaterDirectory: URL {
         URL.applicationSupportDirectory.appending(components: "Flick", "watch_later")
+    }
+
+    private static var libraryFile: URL {
+        URL.applicationSupportDirectory.appending(components: "Flick", "library.json")
+    }
+}
+
+enum LinkPrompt {
+    static func ask(title: String, button: String) -> URL? {
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
+        field.placeholderString = "https://www.youtube.com/watch?v=…"
+        field.stringValue = NSPasteboard.general.string(forType: .string).flatMap(URL.init(webVideoString:))?.absoluteString ?? ""
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = "YouTube, Loom, Vimeo, public Drive or Dropbox links, or a direct video URL."
+        alert.accessoryView = field
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        guard let url = URL(webVideoString: field.stringValue) else {
+            NSSound.beep()
+            return nil
+        }
+        return url
     }
 }
 
@@ -171,6 +185,10 @@ enum MainMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(item("Open…", #selector(AppDelegate.openDocument(_:)), "o", [.command]))
         menu.addItem(item("Open URL…", #selector(AppDelegate.openLocation(_:)), "o", [.command, .shift]))
+        menu.addItem(.separator())
+        menu.addItem(item("Show Library", #selector(PlayerWindowController.toggleLibrary(_:)), "l", [.command]))
+        menu.addItem(item("Add Files to Library…", #selector(PlayerWindowController.addFilesToLibrary(_:))))
+        menu.addItem(item("Add Link to Library…", #selector(PlayerWindowController.addLinkToLibrary(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), "w", [.command]))
         return menu
