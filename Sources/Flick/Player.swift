@@ -15,6 +15,7 @@ struct PlaybackState: Equatable {
     var speed = 1.0
     var videoWidth: Int64 = 0
     var videoHeight: Int64 = 0
+    var videoRotation: Int64 = 0
     var resolutions: [Int] = []
     var maxResolution: Int?
     var subtitleTracks: [SubtitleTrack] = []
@@ -28,7 +29,10 @@ struct PlaybackState: Equatable {
 
     var videoSize: CGSize? {
         guard videoWidth > 0, videoHeight > 0 else { return nil }
-        return CGSize(width: Double(videoWidth), height: Double(videoHeight))
+        let isSideways = videoRotation % 180 != 0
+        let width = Double(isSideways ? videoHeight : videoWidth)
+        let height = Double(isSideways ? videoWidth : videoHeight)
+        return CGSize(width: width, height: height)
     }
 
     var progress: Double {
@@ -101,7 +105,7 @@ final class Player {
         for name in ["pause", "eof-reached", "mute", "paused-for-cache", "sub-visibility"] {
             mpv.observe(name, format: MPV_FORMAT_FLAG)
         }
-        for name in ["dwidth", "dheight"] {
+        for name in ["video-out-params/rotate", "video-out-params/dw", "video-out-params/dh"] {
             mpv.observe(name, format: MPV_FORMAT_INT64)
         }
         mpv.observe("media-title", format: MPV_FORMAT_STRING)
@@ -116,6 +120,9 @@ final class Player {
             isLoading: true,
             volume: state.volume,
             isMuted: state.isMuted,
+            videoWidth: state.videoWidth,
+            videoHeight: state.videoHeight,
+            videoRotation: state.videoRotation,
             maxResolution: state.maxResolution,
             areSubtitlesVisible: state.areSubtitlesVisible
         )
@@ -241,16 +248,22 @@ final class Player {
         case let ("media-title", .string(title)): state.title = title
         case let ("track-list", .string(json)): state.subtitleTracks = SubtitleTrack.tracks(inTrackList: json)
         case let ("sub-visibility", .flag(isVisible)): state.areSubtitlesVisible = isVisible
-        case ("dwidth", .integer), ("dheight", .integer): readDisplaySize()
+        case ("video-out-params/dw", .integer), ("video-out-params/dh", .integer), ("video-out-params/rotate", .integer):
+            readDisplaySize()
         case ("eof-reached", .unavailable): state.isAtEnd = false
         default: break
         }
     }
 
     private func readDisplaySize() {
-        guard let width = mpv.integer("dwidth"), let height = mpv.integer("dheight") else { return }
+        guard
+            let width = mpv.integer("video-out-params/dw"),
+            let height = mpv.integer("video-out-params/dh"),
+            let rotation = mpv.integer("video-out-params/rotate")
+        else { return }
         state.videoWidth = width
         state.videoHeight = height
+        state.videoRotation = rotation
     }
 }
 

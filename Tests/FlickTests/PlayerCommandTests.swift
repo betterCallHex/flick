@@ -49,6 +49,14 @@ struct PlayerCommandTests {
         #expect(loudest.volume == 100)
     }
 
+    @Test func knowsTheVideoSizeAfterSwitchingToAVideoOfTheSameSize() async throws {
+        let session = try await openedSession()
+        let sameSize = try temporaryDirectory().appendingPathComponent("same-size.mp4")
+        try FileManager.default.copyItem(at: try VideoFixture.shared(), to: sameSize)
+        let switched = try await session.open(sameSize)
+        #expect(switched.videoSize == CGSize(width: 320, height: 240))
+    }
+
     @Test func reportsBothSidesOfANewResolutionTogether() async throws {
         let session = try await openedSession()
         let halfSize = try VideoFixture.halfSize()
