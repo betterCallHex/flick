@@ -12,6 +12,7 @@ app:
 	ditto .build/release/Sparkle.framework $(APP)/Contents/Frameworks/Sparkle.framework
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
 	cp Resources/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
+	scripts/bundle-libs.py $(APP)
 	codesign --force --sign - $(APP)
 	/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f $(APP)
 
