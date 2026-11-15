@@ -11,6 +11,7 @@ enum MpvPropertyValue: Equatable {
     case double(Double)
     case flag(Bool)
     case integer(Int64)
+    case string(String)
     case unavailable
 
     init(_ property: mpv_event_property) {
@@ -22,13 +23,16 @@ enum MpvPropertyValue: Equatable {
         case MPV_FORMAT_DOUBLE: self = .double(data.load(as: Double.self))
         case MPV_FORMAT_FLAG: self = .flag(data.load(as: Int32.self) != 0)
         case MPV_FORMAT_INT64: self = .integer(data.load(as: Int64.self))
+        case MPV_FORMAT_STRING: self = data.load(as: UnsafePointer<CChar>?.self).map { .string(String(cString: $0)) } ?? .unavailable
         default: self = .unavailable
         }
     }
 }
 
 enum MpvEvent: Equatable {
+    case fileLoaded
     case loadFailed
+    case hook(name: String, id: UInt64)
     case propertyChanged(name: String, value: MpvPropertyValue)
 }
 
@@ -80,6 +84,20 @@ final class Mpv {
         return mpv_get_property(handle, name, MPV_FORMAT_DOUBLE, &value) >= 0 ? value : nil
     }
 
+    func string(_ name: String) -> String? {
+        guard let value = mpv_get_property_string(handle, name) else { return nil }
+        defer { mpv_free(value) }
+        return String(cString: value)
+    }
+
+    func addHook(_ name: String, priority: Int32) {
+        mpv_hook_add(handle, 0, name, priority)
+    }
+
+    func continueHook(_ id: UInt64) {
+        mpv_hook_continue(handle, id)
+    }
+
     func observe(_ name: String, format: mpv_format) {
         mpv_observe_property(handle, 0, name, format)
     }
@@ -93,9 +111,14 @@ final class Mpv {
 
     private static func translate(_ event: mpv_event) -> MpvEvent? {
         switch event.event_id {
+        case MPV_EVENT_FILE_LOADED:
+            return .fileLoaded
         case MPV_EVENT_END_FILE:
             let endFile = event.data.load(as: mpv_event_end_file.self)
             return endFile.reason == MPV_END_FILE_REASON_ERROR ? .loadFailed : nil
+        case MPV_EVENT_HOOK:
+            let hook = event.data.load(as: mpv_event_hook.self)
+            return .hook(name: String(cString: hook.name), id: hook.id)
         case MPV_EVENT_PROPERTY_CHANGE:
             let property = event.data.load(as: mpv_event_property.self)
             return .propertyChanged(name: String(cString: property.name), value: MpvPropertyValue(property))

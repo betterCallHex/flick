@@ -3,6 +3,9 @@ import Foundation
 
 struct PlaybackState: Equatable {
     var url: URL?
+    var title: String?
+    var isLoading = false
+    var isBuffering = false
     var position = 0.0
     var duration = 0.0
     var isPaused = false
@@ -32,6 +35,7 @@ struct PlaybackState: Equatable {
 
 final class Player {
     static let speedRange = 0.25...4.0
+    static let afterYtdlHookPriority: Int32 = 20
 
     private(set) var state = PlaybackState()
     var onStateChange: ((PlaybackState) -> Void)?
@@ -45,7 +49,7 @@ final class Player {
             ("keep-open", "yes"),
             ("idle", "yes"),
             ("osc", "no"),
-            ("ytdl", "no"),
+            ("ytdl", "yes"),
             ("load-scripts", "no"),
             ("load-stats-overlay", "no"),
             ("load-console", "no"),
@@ -71,19 +75,21 @@ final class Player {
         for name in ["time-pos", "duration", "volume", "speed"] {
             mpv.observe(name, format: MPV_FORMAT_DOUBLE)
         }
-        for name in ["pause", "eof-reached", "mute"] {
+        for name in ["pause", "eof-reached", "mute", "paused-for-cache"] {
             mpv.observe(name, format: MPV_FORMAT_FLAG)
         }
         for name in ["dwidth", "dheight"] {
             mpv.observe(name, format: MPV_FORMAT_INT64)
         }
+        mpv.observe("media-title", format: MPV_FORMAT_STRING)
+        mpv.addHook("on_load", priority: Self.afterYtdlHookPriority)
     }
 
     func open(_ url: URL) {
         saveResumePoint()
-        state = PlaybackState(url: url, volume: state.volume, isMuted: state.isMuted)
+        state = PlaybackState(url: url, isLoading: true, volume: state.volume, isMuted: state.isMuted)
         onStateChange?(state)
-        mpv.command("loadfile", url.path)
+        mpv.command("loadfile", url.mpvTarget)
         mpv.set("pause", false)
     }
 
@@ -92,7 +98,7 @@ final class Player {
         if state.isWorthResuming {
             mpv.command("write-watch-later-config")
         } else {
-            mpv.command("delete-watch-later-config", url.path)
+            mpv.command("delete-watch-later-config", url.mpvTarget)
         }
     }
 
@@ -137,12 +143,27 @@ final class Player {
 
     private func handle(_ event: MpvEvent) {
         switch event {
+        case .fileLoaded:
+            state.isLoading = false
+            onStateChange?(state)
+        case let .hook(name, id):
+            if name == "on_load" { applySignedSegmentCookies() }
+            mpv.continueHook(id)
         case .loadFailed:
+            state.isLoading = false
+            onStateChange?(state)
             if let url = state.url { onLoadFailure?(url) }
         case let .propertyChanged(name, value):
             apply(value, to: name)
             onStateChange?(state)
         }
+    }
+
+    private func applySignedSegmentCookies() {
+        guard let url = state.url, url.resolvesThroughYtdl,
+              let result = mpv.string("user-data/mpv/ytdl/json-subprocess-result"),
+              let cookie = SignedSegments.cookieHeader(fromYtdlResult: result) else { return }
+        mpv.command("change-list", "file-local-options/http-header-fields", "append", "Cookie: \(cookie)")
     }
 
     private func apply(_ value: MpvPropertyValue, to name: String) {
@@ -154,6 +175,8 @@ final class Player {
         case let ("pause", .flag(isPaused)): state.isPaused = isPaused
         case let ("eof-reached", .flag(isAtEnd)): state.isAtEnd = isAtEnd
         case let ("mute", .flag(isMuted)): state.isMuted = isMuted
+        case let ("paused-for-cache", .flag(isBuffering)): state.isBuffering = isBuffering
+        case let ("media-title", .string(title)): state.title = title
         case let ("dwidth", .integer(width)): state.videoWidth = width
         case let ("dheight", .integer(height)): state.videoHeight = height
         case ("eof-reached", .unavailable): state.isAtEnd = false

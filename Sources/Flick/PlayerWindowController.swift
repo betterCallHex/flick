@@ -4,11 +4,13 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     static let chromeIdleSeconds = 2.0
     static let hudSeconds = 1.0
     static let showFallbackSeconds = 0.75
+    static let messageSeconds = 4.0
 
     private let player: Player
     private let playerView: PlayerView
     private let controls = ControlsView()
     private let hud = PillLabel(fontSize: 13)
+    private let status = PillLabel(fontSize: 13)
     private let titleShade = TitleShade()
     private let emptyState = EmptyStateView()
     private var previousState = PlaybackState()
@@ -37,6 +39,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         configure(window)
         layoutOverlays()
         bindPlayer()
+        controls.isHidden = true
     }
 
     required init?(coder: NSCoder) {
@@ -46,12 +49,11 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     func open(_ url: URL) {
         guard let window else { return }
         player.open(url)
-        window.title = url.lastPathComponent
-        window.representedURL = url
+        window.title = url.isFileURL ? url.lastPathComponent : url.displayHost
+        window.representedURL = url.isFileURL ? url : nil
         emptyState.isHidden = true
-        controls.isHidden = false
         displayedVideoSize = nil
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        if url.isFileURL { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
         guard !window.isVisible else {
             revealChrome()
             return
@@ -67,7 +69,6 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     func showEmptyState() {
         emptyState.isHidden = false
-        controls.isHidden = true
         window?.setContentSize(NSSize(width: 640, height: 400))
         window?.center()
         window?.makeKeyAndOrderFront(nil)
@@ -168,8 +169,23 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         showHud(player.state.isMuted ? "Sound On" : "Muted")
     }
 
+    @objc func paste(_ sender: Any?) {
+        guard let url = Self.playableURL(on: NSPasteboard.general) else {
+            showHud("Copy a video link or file first", seconds: Self.messageSeconds)
+            return
+        }
+        open(url)
+    }
+
+    static func playableURL(on pasteboard: NSPasteboard) -> URL? {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        if let file = pasteboard.readObjects(forClasses: [NSURL.self], options: options)?.first as? URL { return file }
+        if let link = pasteboard.readObjects(forClasses: [NSURL.self])?.first as? URL, let web = URL(webVideoString: link.absoluteString) { return web }
+        return pasteboard.string(forType: .string).flatMap(URL.init(webVideoString:))
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        hasFile
+        menuItem.action == #selector(paste(_:)) || hasFile
     }
 
     func windowDidEnterFullScreen(_ notification: Notification) {
@@ -199,7 +215,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         controls.onToggleFullScreen = { [weak self] in self?.window?.toggleFullScreen(nil) }
         controls.onScrub = { [weak self] fraction, isFinished in self?.scrub(to: fraction, isFinished: isFinished) }
         hud.alphaValue = 0
-        for overlay in [titleShade, emptyState, controls, hud] as [NSView] {
+        status.isHidden = true
+        for overlay in [titleShade, emptyState, controls, hud, status] as [NSView] {
             overlay.translatesAutoresizingMaskIntoConstraints = false
             playerView.addSubview(overlay)
         }
@@ -221,6 +238,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             fullWidth,
             hud.centerXAnchor.constraint(equalTo: playerView.centerXAnchor),
             hud.topAnchor.constraint(equalTo: playerView.topAnchor, constant: 56),
+            status.centerXAnchor.constraint(equalTo: playerView.centerXAnchor),
+            status.centerYAnchor.constraint(equalTo: playerView.centerYAnchor),
         ])
         emptyState.onOpen = { NSApp.sendAction(#selector(AppDelegate.openDocument(_:)), to: nil, from: nil) }
     }
@@ -232,6 +251,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     private func render(_ state: PlaybackState) {
         controls.update(with: state)
+        renderStatus(of: state)
         if let size = state.videoSize, size != displayedVideoSize {
             displayedVideoSize = size
             fit(to: size)
@@ -242,6 +262,13 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             isPlaying ? scheduleChromeHide() : setChromeVisible(true)
         }
         previousState = state
+    }
+
+    private func renderStatus(of state: PlaybackState) {
+        controls.isHidden = state.url == nil || state.isLoading
+        if let url = state.url, !url.isFileURL, let title = state.title, !state.isLoading { window?.title = title }
+        status.isHidden = !(state.isLoading || state.isBuffering) || state.url?.isFileURL == true
+        status.text = state.isLoading ? "Loading \(state.url?.displayHost ?? "video")…" : "Buffering…"
     }
 
     private func fit(to videoSize: CGSize) {
@@ -267,7 +294,13 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     private func showLoadFailure(for url: URL) {
         showWindowIfWaiting()
-        showHud("Can’t play “\(url.lastPathComponent)”")
+        showHud(Self.failureMessage(for: url), seconds: Self.messageSeconds)
+    }
+
+    private static func failureMessage(for url: URL) -> String {
+        if url.isFileURL { return "Can’t play “\(url.lastPathComponent)”" }
+        if url.resolvesThroughYtdl && !HomebrewTools.hasYtdlp { return "Install yt-dlp to play web videos: brew install yt-dlp" }
+        return "Can’t play this link. It may be private or unsupported."
     }
 
     private func scrub(to fraction: Double, isFinished: Bool) {
@@ -287,11 +320,11 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         showHud("Volume \(Int(volume.rounded()))%")
     }
 
-    private func showHud(_ text: String) {
+    private func showHud(_ text: String, seconds: Double = PlayerWindowController.hudSeconds) {
         hud.text = text
         hud.alphaValue = 1
         hudHideTimer?.invalidate()
-        hudHideTimer = Timer.scheduledTimer(withTimeInterval: Self.hudSeconds, repeats: false) { [weak self] _ in
+        hudHideTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
             NSAnimationContext.runAnimationGroup { _ in self?.hud.animator().alphaValue = 0 }
         }
     }
@@ -329,7 +362,7 @@ final class PlayerView: NSView {
         self.videoLayer = videoLayer
         super.init(frame: .zero)
         wantsLayer = true
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes([.fileURL, .URL, .string])
     }
 
     required init?(coder: NSCoder) {
@@ -408,18 +441,13 @@ final class PlayerView: NSView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        fileURL(in: sender) == nil ? [] : .copy
+        PlayerWindowController.playableURL(on: sender.draggingPasteboard) == nil ? [] : .copy
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let url = fileURL(in: sender) else { return false }
+        guard let url = PlayerWindowController.playableURL(on: sender.draggingPasteboard) else { return false }
         controller?.open(url)
         return true
-    }
-
-    private func fileURL(in info: NSDraggingInfo) -> URL? {
-        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
-        return info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options)?.first as? URL
     }
 }
 
@@ -452,10 +480,10 @@ final class EmptyStateView: NSStackView {
         let icon = NSImageView(image: NSImage(systemSymbolName: "play.rectangle", accessibilityDescription: nil) ?? NSImage())
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 44, weight: .light)
         icon.contentTintColor = NSColor.white.withAlphaComponent(0.35)
-        let title = NSTextField(labelWithString: "Drop a video here")
+        let title = NSTextField(labelWithString: "Drop a video or link here")
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = NSColor.white.withAlphaComponent(0.9)
-        let hint = NSTextField(labelWithString: "or press ⌘O to choose a file")
+        let hint = NSTextField(labelWithString: "⌘O to choose a file  ·  ⌘V to paste a YouTube, Loom or other link")
         hint.font = .systemFont(ofSize: 12)
         hint.textColor = NSColor.white.withAlphaComponent(0.5)
         let openButton = NSButton(title: "Open…", target: self, action: #selector(openPressed))

@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.mainMenu = MainMenu.make()
+        HomebrewTools.exposeToChildProcesses()
         UserDefaults.standard.register(defaults: [Self.volumeKey: 100.0])
         do {
             try startPlayer()
@@ -57,6 +58,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.allowedContentTypes = [.movie, .video, .audiovisualContent, .audio]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        controller?.open(url)
+    }
+
+    @objc func openLocation(_ sender: Any?) {
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
+        field.placeholderString = "https://www.youtube.com/watch?v=…"
+        field.stringValue = NSPasteboard.general.string(forType: .string).flatMap(URL.init(webVideoString:))?.absoluteString ?? ""
+        let alert = NSAlert()
+        alert.messageText = "Open a video link"
+        alert.informativeText = "YouTube, Loom, Vimeo, public Drive or Dropbox links, or a direct video URL."
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Play")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard let url = URL(webVideoString: field.stringValue) else {
+            NSSound.beep()
+            return
+        }
         controller?.open(url)
     }
 
@@ -113,7 +133,7 @@ final class FirstFrameProbe {
 enum MainMenu {
     static func make() -> NSMenu {
         let menu = NSMenu()
-        for submenu in [appMenu(), fileMenu(), playbackMenu(), audioMenu(), viewMenu(), windowMenu()] {
+        for submenu in [appMenu(), fileMenu(), editMenu(), playbackMenu(), audioMenu(), viewMenu(), windowMenu()] {
             let holder = NSMenuItem()
             holder.submenu = submenu
             menu.addItem(holder)
@@ -136,8 +156,18 @@ enum MainMenu {
     private static func fileMenu() -> NSMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(item("Open…", #selector(AppDelegate.openDocument(_:)), "o", [.command]))
+        menu.addItem(item("Open URL…", #selector(AppDelegate.openLocation(_:)), "o", [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), "w", [.command]))
+        return menu
+    }
+
+    private static func editMenu() -> NSMenu {
+        let menu = NSMenu(title: "Edit")
+        menu.addItem(item("Cut", #selector(NSText.cut(_:)), "x", [.command]))
+        menu.addItem(item("Copy", #selector(NSText.copy(_:)), "c", [.command]))
+        menu.addItem(item("Paste", #selector(NSText.paste(_:)), "v", [.command]))
+        menu.addItem(item("Select All", #selector(NSText.selectAll(_:)), "a", [.command]))
         return menu
     }
 

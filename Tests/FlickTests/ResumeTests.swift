@@ -65,6 +65,7 @@ final class HeadlessSession: @unchecked Sendable {
     private let player: Player
     private let states: AsyncStream<PlaybackState>
     private var iterator: AsyncStream<PlaybackState>.Iterator
+    private let heartbeat: DispatchSourceTimer
 
     init(watchLater: URL, volume: Double = 0) throws {
         let options = Player.options(watchLaterDirectory: watchLater, volume: volume) + [("vo", "null"), ("ao", "null")]
@@ -72,13 +73,22 @@ final class HeadlessSession: @unchecked Sendable {
         let (states, continuation) = AsyncStream<PlaybackState>.makeStream()
         self.states = states
         iterator = states.makeAsyncIterator()
+        heartbeat = DispatchSource.makeTimerSource(queue: queue)
         queue.sync { player.onStateChange = { continuation.yield($0) } }
+        heartbeat.schedule(deadline: .now(), repeating: .milliseconds(100))
+        let player = player
+        heartbeat.setEventHandler { continuation.yield(player.state) }
+        heartbeat.resume()
+    }
+
+    deinit {
+        heartbeat.cancel()
     }
 
     @discardableResult
-    func open(_ url: URL) async throws -> PlaybackState {
+    func open(_ url: URL, timeout: Duration = .seconds(10)) async throws -> PlaybackState {
         perform { $0.open(url) }
-        return try await waitUntil { $0.duration > 0 && $0.videoSize != nil }
+        return try await waitUntil(timeout: timeout) { $0.duration > 0 && $0.videoSize != nil && !$0.isLoading }
     }
 
     func perform(_ action: (Player) -> Void) {
@@ -86,31 +96,43 @@ final class HeadlessSession: @unchecked Sendable {
     }
 
     @discardableResult
-    func waitUntil(_ condition: (PlaybackState) -> Bool) async throws -> PlaybackState {
-        let deadline = ContinuousClock.now + .seconds(10)
+    func waitUntil(timeout: Duration = .seconds(10), _ condition: (PlaybackState) -> Bool) async throws -> PlaybackState {
+        let deadline = ContinuousClock.now + timeout
+        var lastState: PlaybackState?
         while ContinuousClock.now < deadline {
             guard let state = await iterator.next() else { break }
             if condition(state) { return state }
+            lastState = state
         }
-        throw HeadlessSessionTimeout()
+        throw HeadlessSessionTimeout(lastState: lastState)
     }
 }
 
-struct HeadlessSessionTimeout: Error {}
+struct HeadlessSessionTimeout: Error {
+    var lastState: PlaybackState?
+}
 
 enum VideoFixture {
+    private static let generated = Result { try generate() }
+
     static func shared() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("flick-fixture-20s.mp4")
+        try generated.get()
+    }
+
+    private static func generate() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("flick-fixture-20s-faststart.mp4")
         guard !FileManager.default.fileExists(atPath: url.path) else { return url }
+        let partial = url.deletingLastPathComponent().appendingPathComponent("\(UUID().uuidString).mp4")
         let ffmpeg = Process()
         ffmpeg.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
         ffmpeg.arguments = [
             "-y", "-loglevel", "error",
             "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30:duration=20",
-            "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", url.path,
+            "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart", partial.path,
         ]
         try ffmpeg.run()
         ffmpeg.waitUntilExit()
+        try FileManager.default.moveItem(at: partial, to: url)
         return url
     }
 }

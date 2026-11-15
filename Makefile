@@ -2,7 +2,7 @@ APP := build/Flick.app
 TESTING_PLUGINS := /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
 SWIFT_TEST_FLAGS := $(if $(wildcard $(TESTING_PLUGINS)),-Xswiftc -plugin-path -Xswiftc $(TESTING_PLUGINS))
 
-.PHONY: app test bench check run install clean
+.PHONY: app test test-web bench check run install clean
 
 app:
 	swift build -c release
@@ -15,6 +15,9 @@ app:
 
 test:
 	swift test $(SWIFT_TEST_FLAGS)
+
+test-web:
+	FLICK_NETWORK_TESTS=1 swift test $(SWIFT_TEST_FLAGS)
 
 bench: app
 	scripts/bench-launch.sh $(APP)

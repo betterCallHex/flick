@@ -1,6 +1,6 @@
 # Flick
 
-A fast, quiet video player for macOS. Native AppKit UI on top of [libmpv](https://mpv.io), so it plays everything mpv plays (MP4, MKV, WebM, HEVC, AV1, VP9…) with hardware decoding.
+A fast, quiet video player for macOS. Native AppKit UI on top of [libmpv](https://mpv.io), so it plays everything mpv plays (MP4, MKV, WebM, HEVC, AV1, VP9…) with hardware decoding, plus links from YouTube, Loom, Vimeo and the other sites [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports.
 
 ## Speed
 
@@ -17,18 +17,27 @@ Measured on an M4 MacBook Air, macOS 27:
 
 ## Build
 
-Requires the Xcode command line tools and Homebrew mpv:
+Requires the Xcode command line tools, Homebrew mpv, and yt-dlp for web links:
 
 ```sh
-brew install mpv pkg-config
+brew install mpv pkg-config yt-dlp
 make app        # build/Flick.app
 make test       # unit + headless mpv integration tests
+make test-web   # also plays real YouTube and Loom links (needs network)
 make bench      # launch-time budget check
 make check      # test + bench
 make install    # copy to ~/Applications
 ```
 
 To make Flick the default player: Finder → select a video → Get Info → Open with: Flick → Change All.
+
+## Web videos
+
+Paste a link with ⌘V anywhere in the window, use File → Open URL… (⇧⌘O), or drag a link from the browser onto the window. Public YouTube, Loom, Vimeo, Google Drive and Dropbox links work, and so does any direct `.mp4`/`.m3u8` URL.
+
+Links to pages go through yt-dlp first (`ytdl://`). Direct media links skip it. A YouTube link takes 4–6 s to start, almost all of it yt-dlp talking to YouTube. Loom signs its stream segments with a CloudFront policy that mpv's yt-dlp bridge does not forward, so Flick hooks `on_load` and passes the signature as CloudFront cookies (`SignedSegments` in `WebVideo.swift`).
+
+Private videos (a Loom or Drive file that needs you signed in) are not supported yet.
 
 ## Controls
 
@@ -47,6 +56,8 @@ To make Flick the default player: Finder → select a video → Get Info → Ope
 | Two-finger swipe up / down | Volume |
 | Drag the window anywhere | Move it |
 | Drop a file on the window or Dock icon | Open it |
+| ⌘V, drop a link | Play a web video |
+| ⇧⌘O | Open URL… |
 
 Controls, title bar and cursor fade out after 2 s of playback without mouse movement. Every file resumes where you left it, unless you were in its first or last 5 seconds. Subtitles next to the video (fuzzy name match) load automatically.
 
@@ -57,4 +68,5 @@ Controls, title bar and cursor fade out after 2 s of playback without mouse move
 - `Sources/Flick/VideoLayer.swift`: mpv render API on a `CAOpenGLLayer`.
 - `Sources/Flick/PlayerWindowController.swift`: window sizing, auto-hiding chrome, mouse and trackpad input.
 - `Sources/Flick/ControlsView.swift`: control bar, scrubber, labels.
+- `Sources/Flick/WebVideo.swift`: link parsing, yt-dlp routing, CloudFront cookie fix, Homebrew PATH for yt-dlp.
 - `Sources/Flick/App.swift`: app delegate, menus (all keyboard shortcuts live here), first-frame probe used by `make bench`.
