@@ -1,3 +1,5 @@
+<img src="docs/icon.png" width="128" alt="Flick icon">
+
 # Flick
 
 A fast, quiet video player for macOS. Native AppKit UI on top of [libmpv](https://mpv.io), so it plays everything mpv plays (MP4, MKV, WebM, HEVC, AV1, VP9…) with hardware decoding, plus links from YouTube, Loom, Vimeo and the other sites [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports.
@@ -30,7 +32,7 @@ make install    # copy to ~/Applications
 make icon       # regenerate Resources/AppIcon.icns from scripts/make-icon.swift
 ```
 
-The app icon is drawn in code (`scripts/make-icon.swift`). To use other artwork, replace `Resources/AppIcon.icns`.
+The app icon is 32×32 pixel art in four muted colours, drawn in code (`scripts/make-icon.swift`), clipped to Apple's icon shape so macOS shows it full size. To use other artwork, replace `Resources/AppIcon.icns`.
 
 To make Flick the default player: Finder → select a video → Get Info → Open with: Flick → Change All.
 
