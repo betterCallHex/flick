@@ -49,6 +49,14 @@ struct PlayerCommandTests {
         #expect(loudest.volume == 100)
     }
 
+    @Test func knowsTheVideoSizeAfterSwitchingToAVideoOfTheSameSize() async throws {
+        let session = try await openedSession()
+        let sameSize = try temporaryDirectory().appendingPathComponent("same-size.mp4")
+        try FileManager.default.copyItem(at: try VideoFixture.shared(), to: sameSize)
+        let switched = try await session.open(sameSize)
+        #expect(switched.videoSize == CGSize(width: 320, height: 240))
+    }
+
     private func openedSession(volume: Double = 0) async throws -> HeadlessSession {
         let session = try HeadlessSession(watchLater: try temporaryDirectory(), volume: volume)
         try await session.open(try VideoFixture.shared())

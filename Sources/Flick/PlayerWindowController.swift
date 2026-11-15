@@ -52,7 +52,6 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         window.title = url.isFileURL ? url.lastPathComponent : url.displayHost
         window.representedURL = url.isFileURL ? url : nil
         emptyState.isHidden = true
-        displayedVideoSize = nil
         if url.isFileURL { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
         guard !window.isVisible else {
             revealChrome()
