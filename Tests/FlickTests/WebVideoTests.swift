@@ -35,6 +35,34 @@ struct WebPlaybackTests {
         #expect(abs(playing.duration - 20) < 0.5)
     }
 
+    @Test func retriesALinkWhoseLookupHangs() async throws {
+        let video = try VideoFixture.shared()
+        let server = try LocalFileServer(directory: video.deletingLastPathComponent())
+        defer { server.stop() }
+        let lookup = try FakeYtdlp(hangingCalls: 1, answer: server.url(for: video.lastPathComponent))
+        let session = try HeadlessSession(watchLater: try temporaryDirectory(), extraOptions: lookup.mpvOptions)
+        session.perform { $0.webLoadTimeoutSeconds = 2 }
+
+        let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=hangs-once")!)
+
+        #expect(abs(playing.duration - 20) < 0.5)
+        #expect(lookup.runningCalls.isEmpty)
+    }
+
+    @Test func givesUpOnALinkWhoseLookupKeepsHanging() async throws {
+        let lookup = try FakeYtdlp(hangingCalls: 99, answer: URL(string: "http://127.0.0.1:9/never")!)
+        let session = try HeadlessSession(watchLater: try temporaryDirectory(), extraOptions: lookup.mpvOptions)
+        session.perform { $0.webLoadTimeoutSeconds = 1 }
+
+        session.perform { $0.open(URL(string: "https://www.youtube.com/watch?v=hangs-always")!) }
+        let gaveUp = try await session.waitUntil(timeout: .seconds(8)) { $0.loadFailure != nil }
+
+        #expect(gaveUp.loadFailure == .timedOut)
+        #expect(!gaveUp.isLoading)
+        #expect(lookup.calls == 2)
+        #expect(lookup.runningCalls.isEmpty)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
     func playsAYouTubeVideo() async throws {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
@@ -54,6 +82,38 @@ struct WebPlaybackTests {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
         let playing = try await session.open(URL(string: "https://www.loom.com/share/56fde5f991b8490d9033dd226ebf3043")!, timeout: .seconds(30))
         #expect(playing.videoSize != nil)
+    }
+}
+
+struct FakeYtdlp {
+    let directory: URL
+
+    init(hangingCalls: Int, answer: URL) throws {
+        directory = try temporaryDirectory()
+        let info = #"{"id":"fake","title":"Fake","ext":"mp4","url":"\#(answer.absoluteString)"}"#
+        let script = """
+        #!/bin/sh
+        echo $$ >> '\(directory.path)/calls'
+        if [ "$(wc -l < '\(directory.path)/calls')" -le \(hangingCalls) ]; then exec sleep 600; fi
+        echo '\(info)'
+        """
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+    }
+
+    var mpvOptions: [(name: String, value: String)] {
+        [("script-opts", "ytdl_hook-ytdl_path=\(executable.path)")]
+    }
+
+    var calls: Int { pids.count }
+
+    var runningCalls: [pid_t] { pids.filter { kill($0, 0) == 0 } }
+
+    private var executable: URL { directory.appendingPathComponent("yt-dlp") }
+
+    private var pids: [pid_t] {
+        let text = (try? String(contentsOf: directory.appendingPathComponent("calls"), encoding: .utf8)) ?? ""
+        return text.split(separator: "\n").compactMap { pid_t($0) }
     }
 }
 
