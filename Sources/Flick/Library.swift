@@ -33,7 +33,12 @@ final class Library {
     init(file: URL, now: @escaping () -> Date = Date.init) {
         self.file = file
         self.now = now
-        items = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([LibraryItem].self, from: $0) } ?? []
+        let saved = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([LibraryItem].self, from: $0) } ?? []
+        items = saved.map { item in
+            var item = item
+            item.url = item.url.libraryKey
+            return item
+        }
     }
 
     func notePlayed(_ url: URL) {

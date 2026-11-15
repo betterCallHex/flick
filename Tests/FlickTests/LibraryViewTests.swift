@@ -42,6 +42,49 @@ struct LibraryViewTests {
         #expect(played == loom)
     }
 
+    @Test func pressingATileWithVoiceOverPlaysIt() throws {
+        let library = try Library(file: temporaryDirectory().appending(path: "library.json"))
+        library.save(loom)
+        let view = LibraryView(library: library)
+        var played: URL?
+        view.onPlay = { played = $0 }
+
+        let tile = try tile(at: 0, of: view)
+
+        #expect(tile.accessibilityRole() == .button)
+        #expect(tile.accessibilityLabel() == "loom.com")
+        #expect(tile.accessibilityPerformPress())
+        #expect(played == loom)
+    }
+
+    @Test func removesAnItemFromItsTileMenu() throws {
+        let library = try Library(file: temporaryDirectory().appending(path: "library.json"))
+        library.save(loom)
+        let view = LibraryView(library: library)
+        let menu = try #require(try tile(at: 0, of: view).menu)
+
+        #expect(menu.items.map(\.title) == ["Play", "Copy Link", "", "Remove from Library"])
+        menu.performActionForItem(at: try #require(menu.items.firstIndex { $0.title == "Remove from Library" }))
+
+        #expect(library.items.isEmpty)
+    }
+
+    @Test func offersFinderInsteadOfCopyForAFile() throws {
+        let library = try Library(file: temporaryDirectory().appending(path: "library.json"))
+        library.save(URL(fileURLWithPath: "/Users/me/Movies/Trip.mkv"))
+        let menu = try #require(try tile(at: 0, of: LibraryView(library: library)).menu)
+
+        #expect(menu.items.map(\.title).contains("Show in Finder"))
+    }
+
+    private func tile(at index: Int, of view: LibraryView) throws -> NSView {
+        let grid = NSCollectionView()
+        grid.collectionViewLayout = NSCollectionViewFlowLayout()
+        grid.register(LibraryCell.self, forItemWithIdentifier: LibraryCell.identifier)
+        grid.dataSource = view
+        return view.collectionView(grid, itemForRepresentedObjectAt: IndexPath(item: index, section: 0)).view
+    }
+
     @Test func rendersOffscreen() throws {
         let video = try VideoFixture.shared()
         let library = try Library(file: temporaryDirectory().appending(path: "library.json"))

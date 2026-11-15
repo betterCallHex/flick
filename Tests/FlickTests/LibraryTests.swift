@@ -139,6 +139,17 @@ struct LibraryTests {
         #expect(second.items == first.items)
     }
 
+    @Test func matchesAFileSavedUnderAnotherSpellingOfItsPath() throws {
+        let file = try temporaryDirectory().appending(path: "library.json")
+        try #"[{"url":"file:///Users/me/Movies/../Movies/Trip.mkv","addedAt":0,"position":20,"duration":60}]"#.write(to: file, atomically: true, encoding: .utf8)
+        let library = Library(file: file)
+
+        library.notePlayed(movie)
+
+        #expect(library.items.map(\.url) == [movie])
+        #expect(library.items.first?.position == 20)
+    }
+
     @Test func startsEmptyWhenNothingWasSavedYet() throws {
         let library = try Library(file: temporaryDirectory().appending(components: "missing", "library.json"))
         #expect(library.items.isEmpty)

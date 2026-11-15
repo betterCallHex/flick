@@ -1,7 +1,7 @@
 import AppKit
 import QuickLookThumbnailing
 
-final class LibraryView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate, NSMenuDelegate {
+final class LibraryView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
     static let itemSize = NSSize(width: 208, height: 172)
     static let headerHeight: CGFloat = 92
 
@@ -52,7 +52,8 @@ final class LibraryView: NSView, NSCollectionViewDataSource, NSCollectionViewDel
         let cell = collectionView.makeItem(withIdentifier: LibraryCell.identifier, for: indexPath)
         guard let cell = cell as? LibraryCell else { return cell }
         let item = library.items[indexPath.item]
-        cell.show(item)
+        cell.show(item, menu: menu(for: item))
+        cell.onPlay = { [weak self] in self?.onPlay?(item.url) }
         Task { @MainActor [thumbnails] in
             let image = await thumbnails.image(for: item, size: Self.itemSize)
             cell.showThumbnail(image, for: item.url)
@@ -66,9 +67,8 @@ final class LibraryView: NSView, NSCollectionViewDataSource, NSCollectionViewDel
         onPlay?(library.items[index].url)
     }
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        guard let item = clickedItem() else { return }
+    private func menu(for item: LibraryItem) -> NSMenu {
+        let menu = NSMenu()
         menu.addItem(menuItem("Play", #selector(playClicked(_:)), for: item))
         if item.url.isFileURL {
             menu.addItem(menuItem("Show in Finder", #selector(showClickedInFinder(_:)), for: item))
@@ -77,6 +77,7 @@ final class LibraryView: NSView, NSCollectionViewDataSource, NSCollectionViewDel
         }
         menu.addItem(.separator())
         menu.addItem(menuItem("Remove from Library", #selector(removeClicked(_:)), for: item))
+        return menu
     }
 
     private func buildHeader() {
@@ -112,9 +113,6 @@ final class LibraryView: NSView, NSCollectionViewDataSource, NSCollectionViewDel
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.register(LibraryCell.self, forItemWithIdentifier: LibraryCell.identifier)
-        let menu = NSMenu()
-        menu.delegate = self
-        collectionView.menu = menu
         scrollView.documentView = collectionView
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
@@ -154,13 +152,6 @@ final class LibraryView: NSView, NSCollectionViewDataSource, NSCollectionViewDel
         onAddFiles?()
     }
 
-    private func clickedItem() -> LibraryItem? {
-        guard let event = NSApp.currentEvent else { return nil }
-        let point = collectionView.convert(event.locationInWindow, from: nil)
-        guard let index = collectionView.indexPathForItem(at: point)?.item, library.items.indices.contains(index) else { return nil }
-        return library.items[index]
-    }
-
     private func menuItem(_ title: String, _ action: Selector, for item: LibraryItem) -> NSMenuItem {
         let menuItem = NSMenuItem(title: title, action: action, keyEquivalent: "")
         menuItem.target = self
@@ -194,6 +185,8 @@ final class LibraryCell: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("LibraryCell")
     static let thumbnailHeight: CGFloat = 117
 
+    var onPlay: (() -> Void)?
+    private let tile = TileView()
     private let thumbnail = ThumbnailView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let sourceLabel = NSTextField(labelWithString: "")
@@ -210,7 +203,8 @@ final class LibraryCell: NSCollectionViewItem {
         sourceLabel.font = .systemFont(ofSize: 11)
         sourceLabel.textColor = NSColor.white.withAlphaComponent(0.5)
         sourceLabel.lineBreakMode = .byTruncatingTail
-        let container = NSView()
+        tile.onPress = { [weak self] in self?.onPlay?() }
+        let container = tile
         for subview in [thumbnail, titleLabel, sourceLabel] as [NSView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(subview)
@@ -231,8 +225,10 @@ final class LibraryCell: NSCollectionViewItem {
         view = container
     }
 
-    func show(_ item: LibraryItem) {
+    func show(_ item: LibraryItem, menu: NSMenu) {
         shownURL = item.url
+        tile.menu = menu
+        tile.setAccessibilityLabel(item.displayTitle)
         titleLabel.stringValue = item.displayTitle
         titleLabel.toolTip = item.displayTitle
         sourceLabel.stringValue = [item.source, item.duration > 0 ? item.duration.clockText : nil]
@@ -246,6 +242,26 @@ final class LibraryCell: NSCollectionViewItem {
     func showThumbnail(_ image: NSImage?, for url: URL) {
         guard url == shownURL else { return }
         thumbnail.image = image
+    }
+}
+
+final class TileView: NSView {
+    var onPress: (() -> Void)?
+
+    override func isAccessibilityElement() -> Bool { true }
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .button }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard let onPress else { return false }
+        onPress()
+        return true
+    }
+
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard let menu else { return false }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height), in: self)
+        return true
     }
 }
 
