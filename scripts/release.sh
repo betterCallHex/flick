@@ -17,7 +17,7 @@ if gh release view "$tag" >/dev/null 2>&1; then
   echo "$tag already exists. Bump CFBundleShortVersionString and CFBundleVersion in Resources/Info.plist." >&2
   exit 1
 fi
-latest_build=$(gh release download --pattern appcast.xml --output - 2>/dev/null | sed -n 's:.*<sparkle\:version>\(.*\)</sparkle\:version>.*:\1:p' | head -1)
+latest_build=$(gh release download --pattern appcast.xml --output - 2>/dev/null | sed -n 's:.*<sparkle\:version>\(.*\)</sparkle\:version>.*:\1:p' | head -1 || true)
 if [[ -n "$latest_build" && "$build" -le "$latest_build" ]]; then
   echo "CFBundleVersion $build must be greater than the published $latest_build." >&2
   exit 1
