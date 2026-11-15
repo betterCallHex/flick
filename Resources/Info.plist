@@ -24,6 +24,14 @@
     <string>public.app-category.video</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>SUFeedURL</key>
+    <string>https://github.com/betterCallHex/flick/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>0cM/ySiGQrtkTUUTqJ13GrSe6WKuN0HXhcA1ZZdOfXY=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUAutomaticallyUpdate</key>
+    <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>CFBundleDocumentTypes</key>
