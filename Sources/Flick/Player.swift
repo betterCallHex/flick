@@ -18,6 +18,14 @@ struct PlaybackState: Equatable {
     var videoRotation: Int64 = 0
     var resolutions: [Int] = []
     var maxResolution: Int?
+    var subtitleTracks: [SubtitleTrack] = []
+    var areSubtitlesVisible = true
+
+    var hasSubtitles: Bool { !subtitleTracks.isEmpty }
+
+    var isShowingSubtitles: Bool {
+        areSubtitlesVisible && subtitleTracks.contains(where: \.isSelected)
+    }
 
     var videoSize: CGSize? {
         guard videoWidth > 0, videoHeight > 0 else { return nil }
@@ -48,7 +56,12 @@ final class Player {
     var onLoadFailure: ((URL) -> Void)?
     let mpv: Mpv
 
-    static func options(watchLaterDirectory: URL, volume: Double) -> [(name: String, value: String)] {
+    static func options(
+        watchLaterDirectory: URL,
+        volume: Double,
+        showsSubtitles: Bool = true,
+        subtitleLanguages: [String] = Locale.preferredLanguages
+    ) -> [(name: String, value: String)] {
         [
             ("vo", "libmpv"),
             ("hwdec", "auto-safe"),
@@ -56,6 +69,7 @@ final class Player {
             ("idle", "yes"),
             ("osc", "no"),
             ("ytdl", "yes"),
+            ("ytdl-raw-options", ytdlRawOptions(subtitleLanguages: subtitleLanguages, maxResolution: nil)),
             ("load-scripts", "no"),
             ("load-stats-overlay", "no"),
             ("load-console", "no"),
@@ -67,6 +81,7 @@ final class Player {
             ("input-default-bindings", "no"),
             ("input-vo-keyboard", "no"),
             ("sub-auto", "fuzzy"),
+            ("sub-visibility", showsSubtitles ? "yes" : "no"),
             ("resume-playback", "yes"),
             ("watch-later-dir", watchLaterDirectory.path),
             ("watch-later-options", "start,aid,sid,sub-delay,audio-delay"),
@@ -75,19 +90,26 @@ final class Player {
         ]
     }
 
+    static func ytdlRawOptions(subtitleLanguages: [String], maxResolution: Int?) -> String {
+        [WebSubtitles.ytdlRawOptions(languages: subtitleLanguages), VideoQuality.ytdlRawOptions(maxResolution: maxResolution)]
+            .filter { !$0.isEmpty }
+            .joined(separator: ",")
+    }
+
     init(mpv: Mpv) {
         self.mpv = mpv
         mpv.onEvent = { [weak self] event in self?.handle(event) }
         for name in ["time-pos", "duration", "volume", "speed"] {
             mpv.observe(name, format: MPV_FORMAT_DOUBLE)
         }
-        for name in ["pause", "eof-reached", "mute", "paused-for-cache"] {
+        for name in ["pause", "eof-reached", "mute", "paused-for-cache", "sub-visibility"] {
             mpv.observe(name, format: MPV_FORMAT_FLAG)
         }
         for name in ["video-out-params/rotate", "video-out-params/dw", "video-out-params/dh"] {
             mpv.observe(name, format: MPV_FORMAT_INT64)
         }
         mpv.observe("media-title", format: MPV_FORMAT_STRING)
+        mpv.observe("track-list", format: MPV_FORMAT_STRING)
         mpv.addHook("on_load", priority: Self.afterYtdlHookPriority)
     }
 
@@ -101,7 +123,8 @@ final class Player {
             videoWidth: state.videoWidth,
             videoHeight: state.videoHeight,
             videoRotation: state.videoRotation,
-            maxResolution: state.maxResolution
+            maxResolution: state.maxResolution,
+            areSubtitlesVisible: state.areSubtitlesVisible
         )
         onStateChange?(state)
         mpv.command("loadfile", url.mpvTarget)
@@ -109,7 +132,7 @@ final class Player {
     }
 
     func limitResolution(to maxResolution: Int?) {
-        mpv.set("ytdl-raw-options", VideoQuality.ytdlRawOptions(maxResolution: maxResolution))
+        mpv.set("ytdl-raw-options", Self.ytdlRawOptions(subtitleLanguages: Locale.preferredLanguages, maxResolution: maxResolution))
         state.maxResolution = maxResolution
         guard let url = state.url, url.resolvesThroughYtdl else {
             onStateChange?(state)
@@ -168,6 +191,22 @@ final class Player {
         mpv.set("mute", !state.isMuted)
     }
 
+    func toggleSubtitles(preferredLanguages: [String] = Locale.preferredLanguages) {
+        guard !state.isShowingSubtitles else {
+            mpv.set("sub-visibility", false)
+            return
+        }
+        if !state.subtitleTracks.contains(where: \.isSelected),
+           let track = SubtitleTrack.preferred(among: state.subtitleTracks, languages: preferredLanguages) {
+            mpv.set("sid", String(track.id))
+        }
+        mpv.set("sub-visibility", true)
+    }
+
+    func keepSubtitlesAbove(bottomFraction: Double) {
+        mpv.set("sub-pos", 100 * (1 - bottomFraction.clamped(to: 0...0.5)))
+    }
+
     private func handle(_ event: MpvEvent) {
         switch event {
         case .fileLoaded:
@@ -207,6 +246,8 @@ final class Player {
         case let ("mute", .flag(isMuted)): state.isMuted = isMuted
         case let ("paused-for-cache", .flag(isBuffering)): state.isBuffering = isBuffering
         case let ("media-title", .string(title)): state.title = title
+        case let ("track-list", .string(json)): state.subtitleTracks = SubtitleTrack.tracks(inTrackList: json)
+        case let ("sub-visibility", .flag(isVisible)): state.areSubtitlesVisible = isVisible
         case ("video-out-params/dw", .integer), ("video-out-params/dh", .integer), ("video-out-params/rotate", .integer):
             readDisplaySize()
         case ("eof-reached", .unavailable): state.isAtEnd = false

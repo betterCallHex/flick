@@ -71,6 +71,17 @@ struct PlayerCommandTests {
         #expect(shapes.allSatisfy { $0.hasSameShape(as: CGSize(width: 4, height: 3)) })
     }
 
+    @Test func pickingAQualityKeepsAskingForWebSubtitles() async throws {
+        let session = try await openedSession()
+        var rawOptions: String?
+        session.perform { player in
+            player.limitResolution(to: 720)
+            rawOptions = player.mpv.string("ytdl-raw-options")
+        }
+        #expect(rawOptions?.contains("format-sort=res:720") == true)
+        #expect(rawOptions?.contains("sub-langs=") == true)
+    }
+
     private func openedSession(volume: Double = 0) async throws -> HeadlessSession {
         let session = try HeadlessSession(watchLater: try temporaryDirectory(), volume: volume)
         try await session.open(try VideoFixture.shared())
