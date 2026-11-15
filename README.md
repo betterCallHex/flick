@@ -30,11 +30,25 @@ make bench      # launch-time budget check
 make check      # test + bench
 make install    # copy to ~/Applications
 make icon       # regenerate Resources/AppIcon.icns from scripts/make-icon.swift
+make release    # build, sign the update and publish a GitHub release
 ```
 
 The app icon is 32×32 pixel art in four muted colours, drawn in code (`scripts/make-icon.swift`), clipped to Apple's icon shape so macOS shows it full size. To use other artwork, replace `Resources/AppIcon.icns`.
 
 To make Flick the default player: Finder → select a video → Get Info → Open with: Flick → Change All.
+
+## Updates
+
+Flick updates itself with [Sparkle](https://sparkle-project.org). It checks GitHub once a day, downloads a new release in the background and installs it when you quit. Flick → Check for Updates… checks now.
+
+The feed is `appcast.xml` attached to the latest GitHub release (`releases/latest/download/appcast.xml`). Every update is signed with an EdDSA key; the public half is `SUPublicEDKey` in `Info.plist` and the private half lives in the login Keychain under the account `flick` (Sparkle's `generate_keys --account flick`). Back it up with `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account flick -x flick-update-key`; without it no installed copy can be updated again.
+
+To ship a version:
+
+1. Raise `CFBundleShortVersionString` and `CFBundleVersion` in `Resources/Info.plist` and commit.
+2. `make release` builds the app, zips it, writes a signed `appcast.xml`, pushes the branch and runs `gh release create v<version>` with both files.
+
+The app is ad-hoc signed, not notarized. Sparkle installs updates without Gatekeeper getting involved, but a first copy downloaded from the releases page needs `xattr -dr com.apple.quarantine Flick.app` before it opens. It also needs `brew install mpv`, since libmpv is linked from Homebrew.
 
 ## Web videos
 
@@ -76,4 +90,5 @@ Controls, title bar and cursor fade out after 2 s of playback without mouse move
 - `Sources/Flick/PlayerWindowController.swift`: window sizing, auto-hiding chrome, mouse and trackpad input.
 - `Sources/Flick/ControlsView.swift`: control bar, scrubber, labels.
 - `Sources/Flick/WebVideo.swift`: link parsing, yt-dlp routing, CloudFront cookie fix, Homebrew PATH for yt-dlp.
-- `Sources/Flick/App.swift`: app delegate, menus (all keyboard shortcuts live here), first-frame probe used by `make bench`.
+- `Sources/Flick/App.swift`: app delegate, menus (all keyboard shortcuts live here), Sparkle updater, first-frame probe used by `make bench`.
+- `scripts/release.sh`: zips the app, signs the appcast and publishes the GitHub release.

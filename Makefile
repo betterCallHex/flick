@@ -2,13 +2,14 @@ APP := build/Flick.app
 TESTING_PLUGINS := /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
 SWIFT_TEST_FLAGS := $(if $(wildcard $(TESTING_PLUGINS)),-Xswiftc -plugin-path -Xswiftc $(TESTING_PLUGINS))
 
-.PHONY: app icon test test-web bench check run install clean
+.PHONY: app icon test test-web bench check run install release clean
 
 app:
 	swift build -c release
 	rm -rf $(APP)
-	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
+	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
 	cp .build/release/Flick $(APP)/Contents/MacOS/Flick
+	ditto .build/release/Sparkle.framework $(APP)/Contents/Frameworks/Sparkle.framework
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
 	cp Resources/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
 	codesign --force --sign - $(APP)
@@ -41,6 +42,9 @@ install: app
 	rm -rf ~/Applications/Flick.app
 	mkdir -p ~/Applications
 	cp -R $(APP) ~/Applications/Flick.app
+
+release: app
+	scripts/release.sh $(APP)
 
 clean:
 	rm -rf .build build .bench
