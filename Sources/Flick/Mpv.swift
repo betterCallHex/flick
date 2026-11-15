@@ -81,9 +81,18 @@ final class Mpv {
         mpv_set_property(handle, name, MPV_FORMAT_FLAG, &flag)
     }
 
+    func set(_ name: String, _ value: String) {
+        mpv_set_property_string(handle, name, value)
+    }
+
     func double(_ name: String) -> Double? {
         var value = 0.0
         return mpv_get_property(handle, name, MPV_FORMAT_DOUBLE, &value) >= 0 ? value : nil
+    }
+
+    func integer(_ name: String) -> Int64? {
+        var value: Int64 = 0
+        return mpv_get_property(handle, name, MPV_FORMAT_INT64, &value) >= 0 ? value : nil
     }
 
     func string(_ name: String) -> String? {

@@ -30,17 +30,33 @@ make bench      # launch-time budget check
 make check      # test + bench
 make install    # copy to ~/Applications
 make icon       # regenerate Resources/AppIcon.icns from scripts/make-icon.swift
+make release    # build, sign the update and publish a GitHub release
 ```
 
 The app icon is 32×32 pixel art in four muted colours, drawn in code (`scripts/make-icon.swift`), clipped to Apple's icon shape so macOS shows it full size. To use other artwork, replace `Resources/AppIcon.icns`.
 
 To make Flick the default player: Finder → select a video → Get Info → Open with: Flick → Change All.
 
+## Updates
+
+Flick updates itself with [Sparkle](https://sparkle-project.org). It checks GitHub once a day, downloads a new release in the background and installs it when you quit. Flick → Check for Updates… checks now.
+
+The feed is `appcast.xml` attached to the latest GitHub release (`releases/latest/download/appcast.xml`). Every update is signed with an EdDSA key; the public half is `SUPublicEDKey` in `Info.plist` and the private half lives in the login Keychain under the account `flick` (Sparkle's `generate_keys --account flick`). Back it up with `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account flick -x flick-update-key`; without it no installed copy can be updated again.
+
+To ship a version:
+
+1. Raise `CFBundleShortVersionString` and `CFBundleVersion` in `Resources/Info.plist` and commit.
+2. `make release` builds the app, zips it, writes a signed `appcast.xml`, pushes the branch and runs `gh release create v<version>` with both files.
+
+The app is ad-hoc signed, not notarized. Sparkle installs updates without Gatekeeper getting involved, but a first copy downloaded from the releases page needs `xattr -dr com.apple.quarantine Flick.app` before it opens. It also needs `brew install mpv`, since libmpv is linked from Homebrew.
+
 ## Web videos
 
 Paste a link with ⌘V anywhere in the window, use File → Open URL… (⇧⌘O), or drag a link from the browser onto the window. Public YouTube, Loom, Vimeo, Google Drive and Dropbox links work, and so does any direct `.mp4`/`.m3u8` URL.
 
 Links to pages go through yt-dlp first (`ytdl://`). Direct media links skip it. A YouTube link takes 4–6 s to start, almost all of it yt-dlp talking to YouTube. Loom signs its stream segments with a CloudFront policy that mpv's yt-dlp bridge does not forward, so Flick hooks `on_load` and passes the signature as CloudFront cookies (`SignedSegments` in `WebVideo.swift`).
+
+To change the quality, click the resolution (for example **1080p**) in the control bar and pick one of the sizes the site offers, or **Auto** for the best. Flick asks yt-dlp again for the largest stream at or below that size (`format-sort=res:N`) and picks up where you were, so a switch takes as long as opening the link. The choice stays for the next links you open until you quit.
 
 Private videos (a Loom or Drive file that needs you signed in) are not supported yet.
 
@@ -56,6 +72,7 @@ Private videos (a Loom or Drive file that needs you signed in) are not supported
 | , / . | Previous / next frame |
 | ↑ / ↓ | Volume |
 | M | Mute |
+| C, captions button | Subtitles on / off |
 | [ / ] / \\ | Slower / faster / normal speed |
 | Two-finger swipe left / right | Seek |
 | Two-finger swipe up / down | Volume |
@@ -64,7 +81,7 @@ Private videos (a Loom or Drive file that needs you signed in) are not supported
 | ⌘V, drop a link | Play a web video |
 | ⇧⌘O | Open URL… |
 
-Controls, title bar and cursor fade out after 2 s of playback without mouse movement. Every file resumes where you left it, unless you were in its first or last 5 seconds. Subtitles next to the video (fuzzy name match) load automatically.
+Controls, title bar and cursor fade out after 2 s of playback without mouse movement. Every file resumes where you left it, unless you were in its first or last 5 seconds. Subtitles next to the video (fuzzy name match) load automatically. C turns subtitles on or off for local files and web links alike, and Flick remembers the choice. Turning them on when a video has subtitles but none selected (YouTube's usually) picks the track in your system language, else the first one. Web links bring captions in your system languages plus English, including YouTube's auto-generated ones; the captions button only appears when the video has some. Subtitles move up above the control bar while it is showing.
 
 ## Layout
 
@@ -73,5 +90,7 @@ Controls, title bar and cursor fade out after 2 s of playback without mouse move
 - `Sources/Flick/VideoLayer.swift`: mpv render API on a `CAOpenGLLayer`.
 - `Sources/Flick/PlayerWindowController.swift`: window sizing, auto-hiding chrome, mouse and trackpad input.
 - `Sources/Flick/ControlsView.swift`: control bar, scrubber, labels.
+- `Sources/Flick/Subtitles.swift`: subtitle track list, preferred-language pick, yt-dlp caption languages.
 - `Sources/Flick/WebVideo.swift`: link parsing, yt-dlp routing, CloudFront cookie fix, Homebrew PATH for yt-dlp.
-- `Sources/Flick/App.swift`: app delegate, menus (all keyboard shortcuts live here), first-frame probe used by `make bench`.
+- `Sources/Flick/App.swift`: app delegate, menus (all keyboard shortcuts live here), Sparkle updater, first-frame probe used by `make bench`.
+- `scripts/release.sh`: zips the app, signs the appcast and publishes the GitHub release.
