@@ -20,6 +20,39 @@ struct WebVideoLinkTests {
     }
 }
 
+struct VideoQualityTests {
+    @Test func listsEachVideoResolutionOnceFromHighestToLowest() {
+        let info = YtdlInfo(stdout: #"""
+        {"formats":[
+          {"format_id":"140","vcodec":"none","acodec":"mp4a"},
+          {"format_id":"134","vcodec":"avc1","width":640,"height":360},
+          {"format_id":"137","vcodec":"avc1","width":1920,"height":1080},
+          {"format_id":"248","vcodec":"vp9","width":1920,"height":1080},
+          {"format_id":"sb0","vcodec":"none","width":160,"height":90},
+          {"format_id":"136","vcodec":"avc1","width":1280,"height":720}
+        ]}
+        """#)
+        #expect(info?.resolutions == [1080, 720, 360])
+    }
+
+    @Test func namesPortraitVideosByTheirShortSide() {
+        let info = YtdlInfo(stdout: #"{"formats":[{"vcodec":"vp9","width":1080,"height":1920},{"vcodec":"vp9","width":720,"height":1280}]}"#)
+        #expect(info?.resolutions == [1080, 720])
+    }
+
+    @Test func asksYtdlpForTheLargestResolutionUpToTheLimit() {
+        #expect(VideoQuality.ytdlRawOptions(maxResolution: 720) == "format-sort=res:720")
+        #expect(VideoQuality.ytdlRawOptions(maxResolution: nil) == "")
+    }
+}
+
+extension YtdlInfo {
+    init?(stdout: String) {
+        let result = String(data: try! JSONSerialization.data(withJSONObject: ["status": 0, "stdout": stdout]), encoding: .utf8)!
+        self.init(subprocessResult: result)
+    }
+}
+
 @Suite(.serialized)
 struct WebPlaybackTests {
     @Test func playsADirectVideoLinkFromAServer() async throws {
@@ -40,6 +73,21 @@ struct WebPlaybackTests {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
         let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=aqz-KE-bpKQ")!, timeout: .seconds(30))
         #expect(playing.title?.contains("Big Buck Bunny") == true)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
+    func switchesAYouTubeVideoToALowerQualityWhereItWas() async throws {
+        let session = try HeadlessSession(watchLater: try temporaryDirectory())
+        let opened = try await session.open(URL(string: "https://www.youtube.com/watch?v=aqz-KE-bpKQ")!, timeout: .seconds(30))
+        #expect(opened.resolutions.contains(360))
+        session.perform { $0.seek(to: 60, precise: true) }
+        try await session.waitUntil { abs($0.position - 60) < 1 }
+
+        session.perform { $0.limitResolution(to: 360) }
+
+        let switched = try await session.waitUntil(timeout: .seconds(30)) { !$0.isLoading && $0.videoHeight == 360 }
+        #expect(abs(switched.position - 60) < 2)
+        #expect(switched.maxResolution == 360)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
@@ -98,9 +146,8 @@ struct SignedSegmentsTests {
     }
 
     @Test func readsTheSignatureFromYtdlOutput() {
-        let info = #"{"formats":[{"format_id":"a"},{"format_id":"b","extra_param_to_segment_url":"Policy=p&Signature=s&Key-Pair-Id=k"}]}"#
-        let result = String(data: try! JSONSerialization.data(withJSONObject: ["status": 0, "stdout": info]), encoding: .utf8)!
-        #expect(SignedSegments.cookieHeader(fromYtdlResult: result) == "CloudFront-Policy=p; CloudFront-Signature=s; CloudFront-Key-Pair-Id=k")
+        let info = YtdlInfo(stdout: #"{"formats":[{"format_id":"a"},{"format_id":"b","extra_param_to_segment_url":"Policy=p&Signature=s&Key-Pair-Id=k"}]}"#)
+        #expect(info?.signedSegmentCookie == "CloudFront-Policy=p; CloudFront-Signature=s; CloudFront-Key-Pair-Id=k")
     }
 
     @Test func sendsWebPagesThroughYtdlButPlaysMediaLinksDirectly() {

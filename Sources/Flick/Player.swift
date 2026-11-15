@@ -15,6 +15,8 @@ struct PlaybackState: Equatable {
     var speed = 1.0
     var videoWidth: Int64 = 0
     var videoHeight: Int64 = 0
+    var resolutions: [Int] = []
+    var maxResolution: Int?
 
     var videoSize: CGSize? {
         guard videoWidth > 0, videoHeight > 0 else { return nil }
@@ -87,10 +89,22 @@ final class Player {
 
     func open(_ url: URL) {
         saveResumePoint()
-        state = PlaybackState(url: url, isLoading: true, volume: state.volume, isMuted: state.isMuted)
+        state = PlaybackState(url: url, isLoading: true, volume: state.volume, isMuted: state.isMuted, maxResolution: state.maxResolution)
         onStateChange?(state)
         mpv.command("loadfile", url.mpvTarget)
         mpv.set("pause", false)
+    }
+
+    func limitResolution(to maxResolution: Int?) {
+        mpv.set("ytdl-raw-options", VideoQuality.ytdlRawOptions(maxResolution: maxResolution))
+        state.maxResolution = maxResolution
+        guard let url = state.url, url.resolvesThroughYtdl else {
+            onStateChange?(state)
+            return
+        }
+        state.isLoading = true
+        onStateChange?(state)
+        mpv.command("loadfile", url.mpvTarget, "replace", "-1", "start=\(state.position)")
     }
 
     func saveResumePoint() {
@@ -147,7 +161,7 @@ final class Player {
             state.isLoading = false
             onStateChange?(state)
         case let .hook(name, id):
-            if name == "on_load" { applySignedSegmentCookies() }
+            if name == "on_load" { applyYtdlInfo() }
             mpv.continueHook(id)
         case .loadFailed:
             state.isLoading = false
@@ -159,10 +173,13 @@ final class Player {
         }
     }
 
-    private func applySignedSegmentCookies() {
+    private func applyYtdlInfo() {
         guard let url = state.url, url.resolvesThroughYtdl,
               let result = mpv.string("user-data/mpv/ytdl/json-subprocess-result"),
-              let cookie = SignedSegments.cookieHeader(fromYtdlResult: result) else { return }
+              let info = YtdlInfo(subprocessResult: result) else { return }
+        state.resolutions = info.resolutions
+        onStateChange?(state)
+        guard let cookie = info.signedSegmentCookie else { return }
         mpv.command("change-list", "file-local-options/http-header-fields", "append", "Cookie: \(cookie)")
     }
 
@@ -177,11 +194,16 @@ final class Player {
         case let ("mute", .flag(isMuted)): state.isMuted = isMuted
         case let ("paused-for-cache", .flag(isBuffering)): state.isBuffering = isBuffering
         case let ("media-title", .string(title)): state.title = title
-        case let ("dwidth", .integer(width)): state.videoWidth = width
-        case let ("dheight", .integer(height)): state.videoHeight = height
+        case ("dwidth", .integer), ("dheight", .integer): readDisplaySize()
         case ("eof-reached", .unavailable): state.isAtEnd = false
         default: break
         }
+    }
+
+    private func readDisplaySize() {
+        guard let width = mpv.integer("dwidth"), let height = mpv.integer("dheight") else { return }
+        state.videoWidth = width
+        state.videoHeight = height
     }
 }
 

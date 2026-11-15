@@ -4,17 +4,20 @@ final class ControlsView: NSView {
     var onTogglePause: (() -> Void)?
     var onToggleFullScreen: (() -> Void)?
     var onScrub: ((_ fraction: Double, _ isFinished: Bool) -> Void)?
+    var onPickResolution: ((Int?) -> Void)?
     private(set) var isHovered = false
     var isScrubbing: Bool { scrubber.isDragging }
 
     private let background = NSVisualEffectView()
     private let playButton = ControlsView.makeButton()
     private let fullScreenButton = ControlsView.makeButton()
+    private let qualityMenu = ControlsView.makeQualityMenu()
     private let elapsedLabel = ControlsView.makeTimeLabel()
     private let remainingLabel = ControlsView.makeTimeLabel()
     private let scrubber = Scrubber()
     private let hoverBubble = PillLabel(fontSize: 11)
     private var duration = 0.0
+    private var qualityChoice = QualityChoice()
     private var trackingArea: NSTrackingArea?
 
     override init(frame: NSRect) {
@@ -50,6 +53,7 @@ final class ControlsView: NSView {
         let remaining = max(state.duration.rounded(.down) - state.position.rounded(.down), 0)
         remainingLabel.stringValue = "-" + remaining.clockText
         scrubber.setProgress(state.progress)
+        showQualityChoice(QualityChoice(state))
     }
 
     func setFullScreen(_ isFullScreen: Bool) {
@@ -85,8 +89,33 @@ final class ControlsView: NSView {
         onToggleFullScreen?()
     }
 
+    private func showQualityChoice(_ choice: QualityChoice) {
+        guard choice != qualityChoice else { return }
+        qualityChoice = choice
+        qualityMenu.isHidden = choice.resolutions.isEmpty
+        qualityMenu.removeAllItems()
+        qualityMenu.menu?.addItem(withTitle: choice.title, action: nil, keyEquivalent: "")
+        qualityMenu.menu?.addItem(qualityItem(title: "Auto", resolution: nil))
+        qualityMenu.menu?.addItem(.separator())
+        for resolution in choice.resolutions {
+            qualityMenu.menu?.addItem(qualityItem(title: "\(resolution)p", resolution: resolution))
+        }
+    }
+
+    private func qualityItem(title: String, resolution: Int?) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(resolutionPicked(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = resolution
+        item.state = resolution == qualityChoice.maxResolution ? .on : .off
+        return item
+    }
+
+    @objc private func resolutionPicked(_ item: NSMenuItem) {
+        onPickResolution?(item.representedObject as? Int)
+    }
+
     private func layoutContent() {
-        let row = NSStackView(views: [playButton, elapsedLabel, scrubber, remainingLabel, fullScreenButton])
+        let row = NSStackView(views: [playButton, elapsedLabel, scrubber, remainingLabel, qualityMenu, fullScreenButton])
         row.orientation = .horizontal
         row.spacing = 10
         row.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
@@ -132,6 +161,18 @@ final class ControlsView: NSView {
         return button
     }
 
+    private static func makeQualityMenu() -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: true)
+        button.isBordered = false
+        button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+        button.contentTintColor = .white
+        button.isHidden = true
+        button.setAccessibilityLabel("Video quality")
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return button
+    }
+
     private static func makeTimeLabel() -> NSTextField {
         let label = NSTextField(labelWithString: "0:00")
         label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
@@ -143,6 +184,24 @@ final class ControlsView: NSView {
 
     private static func symbol(_ name: String, label: String) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: label)
+    }
+}
+
+struct QualityChoice: Equatable {
+    var resolutions: [Int] = []
+    var maxResolution: Int?
+    var playingResolution: Int64 = 0
+
+    init() {}
+
+    init(_ state: PlaybackState) {
+        resolutions = state.resolutions
+        maxResolution = state.maxResolution
+        playingResolution = min(state.videoWidth, state.videoHeight)
+    }
+
+    var title: String {
+        playingResolution > 0 ? "\(playingResolution)p" : "Quality"
     }
 }
 

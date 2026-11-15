@@ -42,6 +42,8 @@ Paste a link with ⌘V anywhere in the window, use File → Open URL… (⇧⌘O
 
 Links to pages go through yt-dlp first (`ytdl://`). Direct media links skip it. A YouTube link takes 4–6 s to start, almost all of it yt-dlp talking to YouTube. Loom signs its stream segments with a CloudFront policy that mpv's yt-dlp bridge does not forward, so Flick hooks `on_load` and passes the signature as CloudFront cookies (`SignedSegments` in `WebVideo.swift`).
 
+To change the quality, click the resolution (for example **1080p**) in the control bar and pick one of the sizes the site offers, or **Auto** for the best. Flick asks yt-dlp again for the largest stream at or below that size (`format-sort=res:N`) and picks up where you were, so a switch takes as long as opening the link. The choice stays for the next links you open until you quit.
+
 Private videos (a Loom or Drive file that needs you signed in) are not supported yet.
 
 ## Controls
