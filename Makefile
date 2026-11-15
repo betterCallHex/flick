@@ -2,7 +2,7 @@ APP := build/Flick.app
 TESTING_PLUGINS := /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
 SWIFT_TEST_FLAGS := $(if $(wildcard $(TESTING_PLUGINS)),-Xswiftc -plugin-path -Xswiftc $(TESTING_PLUGINS))
 
-.PHONY: app icon test test-web bench check run install release clean
+.PHONY: app icon dmg-background test test-web bench check run install release clean
 
 app:
 	swift build -c release
@@ -24,6 +24,10 @@ icon:
 		sips -z $$((size * 2)) $$((size * 2)) .build/AppIcon-1024.png --out .build/AppIcon.iconset/icon_$${size}x$${size}@2x.png >/dev/null; \
 	done
 	iconutil -c icns .build/AppIcon.iconset -o Resources/AppIcon.icns
+
+dmg-background:
+	swift scripts/make-dmg-background.swift Resources/dmg-background.png 1
+	swift scripts/make-dmg-background.swift Resources/dmg-background@2x.png 2
 
 test:
 	swift test $(SWIFT_TEST_FLAGS)

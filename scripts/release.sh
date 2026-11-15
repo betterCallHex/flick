@@ -29,7 +29,17 @@ ditto -c -k --sequesterRsrc --keepParent "$app" "$out/Flick-$version.zip"
 "$sparkle_bin/generate_appcast" --account flick \
   --download-url-prefix "https://github.com/betterCallHex/flick/releases/download/$tag/" \
   -o "$out/appcast.xml" "$out"
+uvx dmgbuild -s scripts/dmg-settings.py -D app="$app" Flick "$out/Flick-$version.dmg"
 
 git push origin HEAD
-gh release create "$tag" "$out/Flick-$version.zip" "$out/appcast.xml" \
+gh release create "$tag" "$out/Flick-$version.dmg" "$out/Flick-$version.zip" "$out/appcast.xml" \
   --target "$(git rev-parse HEAD)" --title "Flick $version" --generate-notes
+
+tap="$out/homebrew-tap"
+gh repo clone betterCallHex/homebrew-tap "$tap" -- --depth 1 --quiet
+sed -i '' -E \
+  -e "s/^  version \".*\"/  version \"$version\"/" \
+  -e "s/^  sha256 \".*\"/  sha256 \"$(shasum -a 256 "$out/Flick-$version.dmg" | cut -d' ' -f1)\"/" \
+  "$tap/Casks/flick.rb"
+git -C "$tap" commit -qam "flick $version"
+git -C "$tap" push -q

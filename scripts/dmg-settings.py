@@ -1,0 +1,17 @@
+app = defines.get("app", "build/Flick.app")
+files = [app]
+symlinks = {"Applications": "/Applications"}
+icon = "Resources/AppIcon.icns"
+background = "Resources/dmg-background.png"
+format = "ULMO"
+window_rect = ((200, 200), (540, 380))
+icon_size = 100
+text_size = 13
+hide_extensions = ["Flick.app"]
+icon_locations = {"Flick.app": (130, 170), "Applications": (410, 170)}
+default_view = "icon-view"
+show_status_bar = False
+show_tab_view = False
+show_toolbar = False
+show_pathbar = False
+show_sidebar = False
