@@ -57,6 +57,20 @@ struct PlayerCommandTests {
         #expect(switched.videoSize == CGSize(width: 320, height: 240))
     }
 
+    @Test func reportsBothSidesOfANewResolutionTogether() async throws {
+        let session = try await openedSession()
+        let halfSize = try VideoFixture.halfSize()
+        var shapes: [CGSize] = []
+
+        session.perform { $0.mpv.command("loadfile", halfSize.path, "replace") }
+
+        try await session.waitUntil { state in
+            if let size = state.videoSize { shapes.append(size) }
+            return state.videoSize == CGSize(width: 160, height: 120)
+        }
+        #expect(shapes.allSatisfy { $0.hasSameShape(as: CGSize(width: 4, height: 3)) })
+    }
+
     private func openedSession(volume: Double = 0) async throws -> HeadlessSession {
         let session = try HeadlessSession(watchLater: try temporaryDirectory(), volume: volume)
         try await session.open(try VideoFixture.shared())

@@ -51,6 +51,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         player.open(url)
         window.title = url.isFileURL ? url.lastPathComponent : url.displayHost
         window.representedURL = url.isFileURL ? url : nil
+        window.standardWindowButton(.documentIconButton)?.image = NSApp.applicationIconImage
         emptyState.isHidden = true
         if url.isFileURL { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
         guard !window.isVisible else {
@@ -213,6 +214,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         controls.onTogglePause = { [weak self] in self?.togglePlayback(nil) }
         controls.onToggleFullScreen = { [weak self] in self?.window?.toggleFullScreen(nil) }
         controls.onScrub = { [weak self] fraction, isFinished in self?.scrub(to: fraction, isFinished: isFinished) }
+        controls.onPickResolution = { [weak self] resolution in self?.player.limitResolution(to: resolution) }
         hud.alphaValue = 0
         status.isHidden = true
         for overlay in [titleShade, emptyState, controls, hud, status] as [NSView] {
@@ -251,7 +253,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     private func render(_ state: PlaybackState) {
         controls.update(with: state)
         renderStatus(of: state)
-        if let size = state.videoSize, size != displayedVideoSize {
+        if let size = state.videoSize, !size.hasSameShape(as: displayedVideoSize) {
             displayedVideoSize = size
             fit(to: size)
         }
@@ -520,6 +522,14 @@ extension ScrollInput {
         if event.phase.contains(.began) || event.phase.contains(.mayBegin) { return .began }
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) { return .ended }
         return .changed
+    }
+}
+
+extension CGSize {
+    func hasSameShape(as other: CGSize?) -> Bool {
+        guard let other, other.height > 0, height > 0 else { return false }
+        let tolerance = 0.01
+        return abs(width / height - other.width / other.height) <= tolerance * (other.width / other.height)
     }
 }
 

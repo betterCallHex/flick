@@ -1,4 +1,5 @@
 import AppKit
+import Sparkle
 import UniformTypeIdentifiers
 
 @main
@@ -18,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: PlayerWindowController?
     private var player: Player?
     private var firstFrameProbe: FirstFrameProbe?
+    private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -51,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let player else { return }
         player.saveResumePoint()
         UserDefaults.standard.set(player.state.volume, forKey: Self.volumeKey)
+    }
+
+    @objc func checkForUpdates(_ sender: Any?) {
+        updater.checkForUpdates(sender)
     }
 
     @objc func openDocument(_ sender: Any?) {
@@ -144,6 +150,7 @@ enum MainMenu {
     private static func appMenu() -> NSMenu {
         let menu = NSMenu(title: "Flick")
         menu.addItem(item("About Flick", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
+        menu.addItem(item("Check for Updates…", #selector(AppDelegate.checkForUpdates(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Hide Flick", #selector(NSApplication.hide(_:)), "h", [.command]))
         menu.addItem(item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]))

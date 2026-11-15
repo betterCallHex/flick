@@ -26,6 +26,12 @@ struct WindowFitTests {
         let frame = NSRect(fittingVideo: CGSize(width: 1280, height: 720), centeredAt: CGPoint(x: 1500, y: 20), within: screen)
         #expect(screen.contains(frame))
     }
+
+    @Test func keepsTheWindowWhenTheSameVideoComesInAnotherResolution() {
+        #expect(CGSize(width: 854, height: 480).hasSameShape(as: CGSize(width: 1920, height: 1080)))
+        #expect(!CGSize(width: 1080, height: 1920).hasSameShape(as: CGSize(width: 1920, height: 1080)))
+        #expect(!CGSize(width: 1920, height: 1080).hasSameShape(as: nil))
+    }
 }
 
 struct VideoSizeTests {
