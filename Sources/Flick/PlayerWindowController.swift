@@ -51,7 +51,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         player.open(url)
         window.title = url.isFileURL ? url.lastPathComponent : url.displayHost
         window.representedURL = url.isFileURL ? url : nil
-        window.standardWindowButton(.documentIconButton)?.isHidden = true
+        window.standardWindowButton(.documentIconButton)?.image = NSApp.applicationIconImage
         emptyState.isHidden = true
         displayedVideoSize = nil
         if url.isFileURL { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
