@@ -1,124 +1,106 @@
 import AppKit
 
-let canvas: CGFloat = 1024
-let body = NSRect(x: 100, y: 100, width: 824, height: 824)
-let cornerRadius: CGFloat = 185
+struct Cell: Hashable {
+    let x: Int
+    let y: Int
 
-func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> NSColor {
-    NSColor(
-        srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
-        green: CGFloat((hex >> 8) & 0xFF) / 255,
-        blue: CGFloat(hex & 0xFF) / 255,
-        alpha: alpha
-    )
+    func offset(_ dx: Int, _ dy: Int) -> Cell { Cell(x: x + dx, y: y + dy) }
+
+    var neighbors: [Cell] { [offset(1, 0), offset(-1, 0), offset(0, 1), offset(0, -1)] }
+
+    var ring: [Cell] { neighbors + [offset(1, 1), offset(1, -1), offset(-1, 1), offset(-1, -1)] }
+}
+
+enum Palette {
+    static let ink = rgb(0x12_0526)
+    static let shadow = rgb(0x2A_0B4D)
+    static let sky = [rgb(0x1E_0B45), rgb(0x3D_1273), rgb(0x7B_1FA2), rgb(0xD6_2F7F), rgb(0xFF_7A3D)]
+    static let star = rgb(0xFF_F4D6)
+    static let playLight = rgb(0xFF_FFFF)
+    static let playBase = rgb(0xFF_EBC2)
+    static let playShade = rgb(0xFF_B35C)
+    static let streak = rgb(0x4D_F3FF)
+    static let streakFaint = rgb(0x2A_9DC4)
+
+    static func rgb(_ hex: UInt32) -> NSColor {
+        NSColor(
+            srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+}
+
+let gridSize = 32
+let canvas = 1024
+let cellSize = canvas / gridSize
+let bodyRange = 3...28
+let appleTemplate = NSRect(x: 100, y: 100, width: 824, height: 824)
+let appleTemplateCornerRadius: CGFloat = 185
+let bayer4x4: [[Double]] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
+
+func isInBody(_ cell: Cell) -> Bool {
+    bodyRange.contains(cell.x) && bodyRange.contains(cell.y)
+}
+
+func isInPlayButton(_ cell: Cell) -> Bool {
+    let leftEdge = 13
+    let halfHeight = 7.0
+    let length = 11.0
+    let distanceFromMiddle = abs(Double(cell.y) + 0.5 - 16)
+    let width = (1 - distanceFromMiddle / halfHeight) * length
+    return cell.x >= leftEdge && Double(cell.x - leftEdge) + 0.5 <= width
+}
+
+func skyColor(_ cell: Cell) -> NSColor {
+    let progress = Double(cell.y - bodyRange.lowerBound) / Double(bodyRange.count - 1)
+    let band = progress * Double(Palette.sky.count - 1)
+    let lower = Int(band)
+    let threshold = (bayer4x4[cell.y % 4][cell.x % 4] + 0.5) / 16
+    let index = band - Double(lower) > threshold ? lower + 1 : lower
+    return Palette.sky[min(index, Palette.sky.count - 1)]
+}
+
+func streakColor(_ cell: Cell) -> NSColor? {
+    let rows: [Int: (start: Int, solidFrom: Int)] = [12: (7, 9), 15: (5, 8), 16: (5, 8), 19: (7, 9)]
+    let streakEnd = 10
+    guard let row = rows[cell.y], (row.start...streakEnd).contains(cell.x) else { return nil }
+    if cell.x >= row.solidFrom { return Palette.streak }
+    return (cell.x - row.start).isMultiple(of: 2) ? Palette.streakFaint : nil
+}
+
+func playColor(_ cell: Cell) -> NSColor {
+    if !isInPlayButton(cell.offset(0, -1)) || !isInPlayButton(cell.offset(-1, 0)) { return Palette.playLight }
+    if !isInPlayButton(cell.offset(0, 1)) || !isInPlayButton(cell.offset(1, 0)) { return Palette.playShade }
+    return Palette.playBase
+}
+
+func color(of cell: Cell) -> NSColor? {
+    guard isInBody(cell) else { return nil }
+    if isInPlayButton(cell) { return playColor(cell) }
+    if cell.ring.contains(where: isInPlayButton) { return Palette.ink }
+    if isInPlayButton(cell.offset(-2, -2)) { return Palette.shadow }
+    if let streak = streakColor(cell) { return streak }
+    let stars: Set<Cell> = [Cell(x: 8, y: 6), Cell(x: 19, y: 5), Cell(x: 25, y: 8), Cell(x: 6, y: 9), Cell(x: 14, y: 7)]
+    if stars.contains(cell) { return Palette.star }
+    return skyColor(cell)
 }
 
 func drawIcon() {
-    let shape = NSBezierPath(roundedRect: body, xRadius: cornerRadius, yRadius: cornerRadius)
-    drawDropShadow(for: shape)
-    NSGraphicsContext.saveGraphicsState()
-    shape.addClip()
-    drawBackground()
-    drawGlow()
-    drawStreaks()
-    drawPlayButton()
-    drawSheen()
-    NSGraphicsContext.restoreGraphicsState()
-    drawRim(for: shape)
-}
-
-func drawDropShadow(for shape: NSBezierPath) {
-    NSGraphicsContext.saveGraphicsState()
-    let shadow = NSShadow()
-    shadow.shadowColor = color(0x000000, 0.35)
-    shadow.shadowBlurRadius = 28
-    shadow.shadowOffset = NSSize(width: 0, height: -12)
-    shadow.set()
-    color(0x15172E).setFill()
-    shape.fill()
-    NSGraphicsContext.restoreGraphicsState()
-}
-
-func drawBackground() {
-    let gradient = NSGradient(colors: [color(0x2B1B4F), color(0x15172E), color(0x0B0C1A)], atLocations: [0, 0.55, 1], colorSpace: .sRGB)
-    gradient?.draw(in: body, angle: -60)
-}
-
-func drawGlow() {
-    let glow = NSGradient(colors: [color(0xFF6A88, 0.75), color(0xFF6A88, 0.22), color(0xFF6A88, 0)], atLocations: [0, 0.45, 1], colorSpace: .sRGB)
-    glow?.draw(fromCenter: NSPoint(x: 560, y: 500), radius: 0, toCenter: NSPoint(x: 560, y: 500), radius: 430, options: [])
-    let cool = NSGradient(colors: [color(0x7B5CFF, 0.55), color(0x7B5CFF, 0)], atLocations: nil, colorSpace: .sRGB)
-    cool?.draw(fromCenter: NSPoint(x: 300, y: 760), radius: 0, toCenter: NSPoint(x: 300, y: 760), radius: 420, options: [])
-}
-
-func drawStreaks() {
-    let streaks: [(y: CGFloat, length: CGFloat, alpha: CGFloat)] = [(612, 200, 0.5), (512, 270, 0.85), (412, 200, 0.5)]
-    let rightEdge: CGFloat = 400
-    for streak in streaks {
-        let rect = NSRect(x: rightEdge - streak.length, y: streak.y - 22, width: streak.length, height: 44)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 22, yRadius: 22)
-        NSGraphicsContext.saveGraphicsState()
-        path.addClip()
-        NSGradient(colors: [color(0xFFFFFF, 0), color(0xFFFFFF, streak.alpha)], atLocations: nil, colorSpace: .sRGB)?.draw(in: rect, angle: 0)
-        NSGraphicsContext.restoreGraphicsState()
+    NSBezierPath(roundedRect: appleTemplate, xRadius: appleTemplateCornerRadius, yRadius: appleTemplateCornerRadius).addClip()
+    for y in 0..<gridSize {
+        for x in 0..<gridSize {
+            guard let fill = color(of: Cell(x: x, y: y)) else { continue }
+            fill.setFill()
+            NSRect(x: x * cellSize, y: canvas - (y + 1) * cellSize, width: cellSize, height: cellSize).fill()
+        }
     }
-}
-
-func drawPlayButton() {
-    let triangle = roundedTriangle(tip: NSPoint(x: 800, y: 512), height: 400, cornerRadius: 64)
-    NSGraphicsContext.saveGraphicsState()
-    let shadow = NSShadow()
-    shadow.shadowColor = color(0x2A0A2E, 0.55)
-    shadow.shadowBlurRadius = 40
-    shadow.shadowOffset = NSSize(width: 0, height: -16)
-    shadow.set()
-    color(0xFFFFFF).setFill()
-    triangle.fill()
-    NSGraphicsContext.restoreGraphicsState()
-    NSGraphicsContext.saveGraphicsState()
-    triangle.addClip()
-    NSGradient(colors: [color(0xFFFFFF), color(0xFFE3EC)], atLocations: nil, colorSpace: .sRGB)?.draw(in: triangle.bounds, angle: -90)
-    NSGraphicsContext.restoreGraphicsState()
-}
-
-func roundedTriangle(tip: NSPoint, height: CGFloat, cornerRadius: CGFloat) -> NSBezierPath {
-    let width = height * 0.9
-    let top = NSPoint(x: tip.x - width, y: tip.y + height / 2)
-    let bottom = NSPoint(x: tip.x - width, y: tip.y - height / 2)
-    let corners = [top, tip, bottom]
-    let path = NSBezierPath()
-    for index in corners.indices {
-        let current = corners[index]
-        let previous = corners[(index + 2) % 3]
-        let next = corners[(index + 1) % 3]
-        let entry = point(from: current, toward: previous, distance: cornerRadius)
-        let exit = point(from: current, toward: next, distance: cornerRadius)
-        index == 0 ? path.move(to: entry) : path.line(to: entry)
-        path.curve(to: exit, controlPoint1: current, controlPoint2: current)
-    }
-    path.close()
-    return path
-}
-
-func point(from start: NSPoint, toward end: NSPoint, distance: CGFloat) -> NSPoint {
-    let length = hypot(end.x - start.x, end.y - start.y)
-    return NSPoint(x: start.x + (end.x - start.x) * distance / length, y: start.y + (end.y - start.y) * distance / length)
-}
-
-func drawSheen() {
-    let upperHalf = NSRect(x: body.minX, y: body.midY, width: body.width, height: body.height / 2)
-    NSGradient(colors: [color(0xFFFFFF, 0), color(0xFFFFFF, 0.08)], atLocations: nil, colorSpace: .sRGB)?.draw(in: upperHalf, angle: 90)
-}
-
-func drawRim(for shape: NSBezierPath) {
-    color(0xFFFFFF, 0.10).setStroke()
-    shape.lineWidth = 3
-    shape.stroke()
 }
 
 let outputPath = CommandLine.arguments.dropFirst().first ?? "AppIcon-1024.png"
 guard let bitmap = NSBitmapImageRep(
-    bitmapDataPlanes: nil, pixelsWide: Int(canvas), pixelsHigh: Int(canvas),
+    bitmapDataPlanes: nil, pixelsWide: canvas, pixelsHigh: canvas,
     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
 ) else { fatalError("Could not allocate the icon bitmap") }
