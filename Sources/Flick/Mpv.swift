@@ -38,12 +38,14 @@ enum MpvEvent: Equatable {
 
 final class Mpv {
     let handle: OpaquePointer
+    let eventQueue: DispatchQueue
     var onEvent: ((MpvEvent) -> Void)?
     private let wakeupRelay: Unmanaged<WakeupRelay>
 
     init(options: [(name: String, value: String)], eventQueue: DispatchQueue = .main) throws {
         guard let handle = mpv_create() else { throw MpvError(code: MPV_ERROR_NOMEM.rawValue) }
         self.handle = handle
+        self.eventQueue = eventQueue
         wakeupRelay = Unmanaged.passRetained(WakeupRelay(queue: eventQueue))
         for option in options {
             try Self.check(mpv_set_option_string(handle, option.name, option.value))

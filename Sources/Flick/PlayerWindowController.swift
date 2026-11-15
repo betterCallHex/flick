@@ -268,12 +268,14 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     private func bindPlayer() {
         player.onStateChange = { [weak self] state in self?.render(state) }
-        player.onLoadFailure = { [weak self] url in self?.showLoadFailure(for: url) }
     }
 
     private func render(_ state: PlaybackState) {
         controls.update(with: state)
         renderStatus(of: state)
+        if let failure = state.loadFailure, previousState.loadFailure == nil, let url = state.url {
+            showLoadFailure(failure, for: url)
+        }
         if let size = state.videoSize, !size.hasSameShape(as: displayedVideoSize) {
             displayedVideoSize = size
             fit(to: size)
@@ -314,12 +316,13 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         revealChrome()
     }
 
-    private func showLoadFailure(for url: URL) {
+    private func showLoadFailure(_ failure: LoadFailure, for url: URL) {
         showWindowIfWaiting()
-        showHud(Self.failureMessage(for: url), seconds: Self.messageSeconds)
+        showHud(Self.failureMessage(failure, for: url), seconds: Self.messageSeconds)
     }
 
-    private static func failureMessage(for url: URL) -> String {
+    private static func failureMessage(_ failure: LoadFailure, for url: URL) -> String {
+        if failure == .timedOut { return "\(url.displayHost) isn’t responding. Paste the link again to retry." }
         if url.isFileURL { return "Can’t play “\(url.lastPathComponent)”" }
         if url.resolvesThroughYtdl && !HomebrewTools.hasYtdlp { return "Install yt-dlp to play web videos: brew install yt-dlp" }
         return "Can’t play this link. It may be private or unsupported."

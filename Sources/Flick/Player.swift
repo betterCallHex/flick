@@ -1,10 +1,16 @@
 import CMpv
 import Foundation
 
+enum LoadFailure: Equatable {
+    case unplayable
+    case timedOut
+}
+
 struct PlaybackState: Equatable {
     var url: URL?
     var title: String?
     var isLoading = false
+    var loadFailure: LoadFailure?
     var isBuffering = false
     var position = 0.0
     var duration = 0.0
@@ -53,8 +59,9 @@ final class Player {
 
     private(set) var state = PlaybackState()
     var onStateChange: ((PlaybackState) -> Void)?
-    var onLoadFailure: ((URL) -> Void)?
+    var webLoadTimeoutSeconds = 20.0
     let mpv: Mpv
+    private var loadGeneration = 0
 
     static func options(
         watchLaterDirectory: URL,
@@ -127,8 +134,7 @@ final class Player {
             areSubtitlesVisible: state.areSubtitlesVisible
         )
         onStateChange?(state)
-        mpv.command("loadfile", url.mpvTarget)
-        mpv.set("pause", false)
+        load(url, retriesLeft: 1)
     }
 
     func limitResolution(to maxResolution: Int?) {
@@ -140,7 +146,7 @@ final class Player {
         }
         state.isLoading = true
         onStateChange?(state)
-        mpv.command("loadfile", url.mpvTarget, "replace", "-1", "start=\(state.position)")
+        load(url, retriesLeft: 1, startingAt: state.position)
     }
 
     func saveResumePoint() {
@@ -216,13 +222,38 @@ final class Player {
             if name == "on_load" { applyYtdlInfo() }
             mpv.continueHook(id)
         case .loadFailed:
-            state.isLoading = false
-            onStateChange?(state)
-            if let url = state.url { onLoadFailure?(url) }
+            fail(.unplayable)
         case let .propertyChanged(name, value):
             apply(value, to: name)
             onStateChange?(state)
         }
+    }
+
+    private func load(_ url: URL, retriesLeft: Int, startingAt start: Double? = nil) {
+        loadGeneration += 1
+        let generation = loadGeneration
+        if let start {
+            mpv.command("loadfile", url.mpvTarget, "replace", "-1", "start=\(start)")
+        } else {
+            mpv.command("loadfile", url.mpvTarget)
+            mpv.set("pause", false)
+        }
+        guard url.resolvesThroughYtdl else { return }
+        mpv.eventQueue.asyncAfter(deadline: .now() + webLoadTimeoutSeconds) { [weak self] in
+            guard let self, generation == loadGeneration, state.isLoading else { return }
+            guard retriesLeft > 0 else {
+                mpv.command("stop")
+                fail(.timedOut)
+                return
+            }
+            load(url, retriesLeft: retriesLeft - 1, startingAt: start)
+        }
+    }
+
+    private func fail(_ failure: LoadFailure) {
+        state.isLoading = false
+        state.loadFailure = failure
+        onStateChange?(state)
     }
 
     private func applyYtdlInfo() {

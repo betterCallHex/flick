@@ -67,8 +67,8 @@ final class HeadlessSession: @unchecked Sendable {
     private var iterator: AsyncStream<PlaybackState>.Iterator
     private let heartbeat: DispatchSourceTimer
 
-    convenience init(watchLater: URL, volume: Double = 0) throws {
-        try self.init(options: Player.options(watchLaterDirectory: watchLater, volume: volume))
+    convenience init(watchLater: URL, volume: Double = 0, extraOptions: [(name: String, value: String)] = []) throws {
+        try self.init(options: Player.options(watchLaterDirectory: watchLater, volume: volume) + extraOptions)
     }
 
     init(options: [(name: String, value: String)]) throws {
