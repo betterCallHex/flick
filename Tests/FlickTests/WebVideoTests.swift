@@ -134,11 +134,12 @@ struct WebPlaybackTests {
 }
 
 struct FakeYtdlp {
+    static let thumbnail = URL(string: "https://i.ytimg.com/vi/fake/maxresdefault.jpg")!
     let directory: URL
 
     init(hangingCalls: Int, answer: URL) throws {
         directory = try temporaryDirectory()
-        let info = #"{"id":"fake","title":"Fake","ext":"mp4","url":"\#(answer.absoluteString)"}"#
+        let info = #"{"id":"fake","title":"Fake","ext":"mp4","thumbnail":"\#(Self.thumbnail.absoluteString)","url":"\#(answer.absoluteString)"}"#
         let script = """
         #!/bin/sh
         echo $$ >> '\(directory.path)/calls'
@@ -157,7 +158,7 @@ struct FakeYtdlp {
 
     var runningCalls: [pid_t] { pids.filter { kill($0, 0) == 0 } }
 
-    private var executable: URL { directory.appendingPathComponent("yt-dlp") }
+    var executable: URL { directory.appendingPathComponent("yt-dlp") }
 
     private var pids: [pid_t] {
         let text = (try? String(contentsOf: directory.appendingPathComponent("calls"), encoding: .utf8)) ?? ""
