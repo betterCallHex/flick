@@ -3,6 +3,7 @@ import AppKit
 final class ControlsView: NSView {
     var onTogglePause: (() -> Void)?
     var onToggleFullScreen: (() -> Void)?
+    var onToggleSubtitles: (() -> Void)?
     var onScrub: ((_ fraction: Double, _ isFinished: Bool) -> Void)?
     var onPickResolution: ((Int?) -> Void)?
     private(set) var isHovered = false
@@ -10,6 +11,7 @@ final class ControlsView: NSView {
 
     private let background = NSVisualEffectView()
     private let playButton = ControlsView.makeButton()
+    private let subtitlesButton = ControlsView.makeButton()
     private let fullScreenButton = ControlsView.makeButton()
     private let qualityMenu = ControlsView.makeQualityMenu()
     private let elapsedLabel = ControlsView.makeTimeLabel()
@@ -31,6 +33,8 @@ final class ControlsView: NSView {
         background.layer?.masksToBounds = true
         playButton.target = self
         playButton.action = #selector(playPressed)
+        subtitlesButton.target = self
+        subtitlesButton.action = #selector(subtitlesPressed)
         fullScreenButton.target = self
         fullScreenButton.action = #selector(fullScreenPressed)
         scrubber.onScrub = { [weak self] fraction, isFinished in self?.onScrub?(fraction, isFinished) }
@@ -54,6 +58,12 @@ final class ControlsView: NSView {
         remainingLabel.stringValue = "-" + remaining.clockText
         scrubber.setProgress(state.progress)
         showQualityChoice(QualityChoice(state))
+        subtitlesButton.isHidden = !state.hasSubtitles
+        let isShowing = state.isShowingSubtitles
+        subtitlesButton.image = Self.symbol(
+            isShowing ? "captions.bubble.fill" : "captions.bubble",
+            label: isShowing ? "Hide Subtitles" : "Show Subtitles"
+        )
     }
 
     func setFullScreen(_ isFullScreen: Bool) {
@@ -83,6 +93,10 @@ final class ControlsView: NSView {
 
     @objc private func playPressed() {
         onTogglePause?()
+    }
+
+    @objc private func subtitlesPressed() {
+        onToggleSubtitles?()
     }
 
     @objc private func fullScreenPressed() {
@@ -115,7 +129,9 @@ final class ControlsView: NSView {
     }
 
     private func layoutContent() {
-        let row = NSStackView(views: [playButton, elapsedLabel, scrubber, remainingLabel, qualityMenu, fullScreenButton])
+        let row = NSStackView(
+            views: [playButton, elapsedLabel, scrubber, remainingLabel, subtitlesButton, qualityMenu, fullScreenButton]
+        )
         row.orientation = .horizontal
         row.spacing = 10
         row.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)

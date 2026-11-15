@@ -72,6 +72,7 @@ Private videos (a Loom or Drive file that needs you signed in) are not supported
 | , / . | Previous / next frame |
 | ↑ / ↓ | Volume |
 | M | Mute |
+| C, captions button | Subtitles on / off |
 | [ / ] / \\ | Slower / faster / normal speed |
 | Two-finger swipe left / right | Seek |
 | Two-finger swipe up / down | Volume |
@@ -80,7 +81,7 @@ Private videos (a Loom or Drive file that needs you signed in) are not supported
 | ⌘V, drop a link | Play a web video |
 | ⇧⌘O | Open URL… |
 
-Controls, title bar and cursor fade out after 2 s of playback without mouse movement. Every file resumes where you left it, unless you were in its first or last 5 seconds. Subtitles next to the video (fuzzy name match) load automatically.
+Controls, title bar and cursor fade out after 2 s of playback without mouse movement. Every file resumes where you left it, unless you were in its first or last 5 seconds. Subtitles next to the video (fuzzy name match) load automatically. C turns subtitles on or off for local files and web links alike, and Flick remembers the choice. Turning them on when a video has subtitles but none selected (YouTube's usually) picks the track in your system language, else the first one. Web links bring captions in your system languages plus English, including YouTube's auto-generated ones; the captions button only appears when the video has some. Subtitles move up above the control bar while it is showing.
 
 ## Layout
 
@@ -89,6 +90,7 @@ Controls, title bar and cursor fade out after 2 s of playback without mouse move
 - `Sources/Flick/VideoLayer.swift`: mpv render API on a `CAOpenGLLayer`.
 - `Sources/Flick/PlayerWindowController.swift`: window sizing, auto-hiding chrome, mouse and trackpad input.
 - `Sources/Flick/ControlsView.swift`: control bar, scrubber, labels.
+- `Sources/Flick/Subtitles.swift`: subtitle track list, preferred-language pick, yt-dlp caption languages.
 - `Sources/Flick/WebVideo.swift`: link parsing, yt-dlp routing, CloudFront cookie fix, Homebrew PATH for yt-dlp.
 - `Sources/Flick/App.swift`: app delegate, menus (all keyboard shortcuts live here), Sparkle updater, first-frame probe used by `make bench`.
 - `scripts/release.sh`: zips the app, signs the appcast and publishes the GitHub release.

@@ -5,6 +5,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     static let hudSeconds = 1.0
     static let showFallbackSeconds = 0.75
     static let messageSeconds = 4.0
+    static let controlsMargin: CGFloat = 16
+    static let controlsHeight: CGFloat = 44
 
     private let player: Player
     private let playerView: PlayerView
@@ -170,6 +172,12 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         showHud(player.state.isMuted ? "Sound On" : "Muted")
     }
 
+    @objc func toggleSubtitles(_ sender: Any?) {
+        let wasShowing = player.state.isShowingSubtitles
+        player.toggleSubtitles()
+        showHud(wasShowing ? "Subtitles Off" : "Subtitles On")
+    }
+
     @objc func paste(_ sender: Any?) {
         guard let url = Self.playableURL(on: NSPasteboard.general) else {
             showHud("Copy a video link or file first", seconds: Self.messageSeconds)
@@ -186,7 +194,19 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        menuItem.action == #selector(paste(_:)) || hasFile
+        switch menuItem.action {
+        case #selector(paste(_:)):
+            return true
+        case #selector(toggleSubtitles(_:)):
+            menuItem.state = player.state.isShowingSubtitles ? .on : .off
+            return player.state.hasSubtitles
+        default:
+            return hasFile
+        }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        positionSubtitles()
     }
 
     func windowDidEnterFullScreen(_ notification: Notification) {
@@ -214,6 +234,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     private func layoutOverlays() {
         controls.onTogglePause = { [weak self] in self?.togglePlayback(nil) }
         controls.onToggleFullScreen = { [weak self] in self?.window?.toggleFullScreen(nil) }
+        controls.onToggleSubtitles = { [weak self] in self?.toggleSubtitles(nil) }
         controls.onScrub = { [weak self] fraction, isFinished in self?.scrub(to: fraction, isFinished: isFinished) }
         controls.onPickResolution = { [weak self] resolution in self?.player.limitResolution(to: resolution) }
         hud.alphaValue = 0
@@ -222,7 +243,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             overlay.translatesAutoresizingMaskIntoConstraints = false
             playerView.addSubview(overlay)
         }
-        let sideMargin: CGFloat = 16
+        let sideMargin = Self.controlsMargin
         let fullWidth = controls.widthAnchor.constraint(equalTo: playerView.widthAnchor, constant: -2 * sideMargin)
         fullWidth.priority = .dragThatCannotResizeWindow
         NSLayoutConstraint.activate([
@@ -234,7 +255,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             emptyState.centerYAnchor.constraint(equalTo: playerView.centerYAnchor),
             controls.centerXAnchor.constraint(equalTo: playerView.centerXAnchor),
             controls.bottomAnchor.constraint(equalTo: playerView.bottomAnchor, constant: -sideMargin),
-            controls.heightAnchor.constraint(equalToConstant: 44),
+            controls.heightAnchor.constraint(equalToConstant: Self.controlsHeight),
             controls.widthAnchor.constraint(lessThanOrEqualToConstant: 720),
             controls.widthAnchor.constraint(lessThanOrEqualTo: playerView.widthAnchor, constant: -2 * sideMargin),
             fullWidth,
@@ -338,9 +359,17 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         }
     }
 
+    private func positionSubtitles() {
+        let height = playerView.bounds.height
+        guard height > 0 else { return }
+        let covered = isChromeVisible ? Self.controlsMargin + Self.controlsHeight : 0
+        player.keepSubtitlesAbove(bottomFraction: Double(covered / height))
+    }
+
     private func setChromeVisible(_ isVisible: Bool) {
         guard isVisible != isChromeVisible else { return }
         isChromeVisible = isVisible
+        positionSubtitles()
         let alpha: CGFloat = isVisible ? 1 : 0
         let titlebar = isFullScreen ? nil : window?.standardWindowButton(.closeButton)?.superview?.superview
         NSAnimationContext.runAnimationGroup { context in

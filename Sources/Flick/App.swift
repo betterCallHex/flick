@@ -14,6 +14,7 @@ enum FlickApp {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let volumeKey = "volume"
+    static let subtitlesKey = "showsSubtitles"
     static let firstFrameProbeVariable = "FLICK_FIRST_FRAME_FILE"
 
     private var controller: PlayerWindowController?
@@ -25,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.mainMenu = MainMenu.make()
         HomebrewTools.exposeToChildProcesses()
-        UserDefaults.standard.register(defaults: [Self.volumeKey: 100.0])
+        UserDefaults.standard.register(defaults: [Self.volumeKey: 100.0, Self.subtitlesKey: true])
         do {
             try startPlayer()
         } catch {
@@ -53,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let player else { return }
         player.saveResumePoint()
         UserDefaults.standard.set(player.state.volume, forKey: Self.volumeKey)
+        UserDefaults.standard.set(player.state.areSubtitlesVisible, forKey: Self.subtitlesKey)
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
@@ -87,8 +89,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startPlayer() throws {
-        let volume = UserDefaults.standard.double(forKey: Self.volumeKey)
-        let mpv = try Mpv(options: Player.options(watchLaterDirectory: Self.watchLaterDirectory, volume: volume))
+        let defaults = UserDefaults.standard
+        let options = Player.options(
+            watchLaterDirectory: Self.watchLaterDirectory,
+            volume: defaults.double(forKey: Self.volumeKey),
+            showsSubtitles: defaults.bool(forKey: Self.subtitlesKey)
+        )
+        let mpv = try Mpv(options: options)
         let player = Player(mpv: mpv)
         let videoLayer = try VideoLayer(mpv: mpv)
         self.player = player
@@ -211,6 +218,7 @@ enum MainMenu {
     private static func viewMenu() -> NSMenu {
         let menu = NSMenu(title: "View")
         menu.addItem(item("Toggle Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f"))
+        menu.addItem(item("Subtitles", #selector(PlayerWindowController.toggleSubtitles(_:)), "c"))
         return menu
     }
 
