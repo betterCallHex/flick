@@ -15,12 +15,16 @@ struct PlaybackState: Equatable {
     var speed = 1.0
     var videoWidth: Int64 = 0
     var videoHeight: Int64 = 0
+    var videoRotation: Int64 = 0
     var resolutions: [Int] = []
     var maxResolution: Int?
 
     var videoSize: CGSize? {
         guard videoWidth > 0, videoHeight > 0 else { return nil }
-        return CGSize(width: Double(videoWidth), height: Double(videoHeight))
+        let isSideways = videoRotation % 180 != 0
+        let width = Double(isSideways ? videoHeight : videoWidth)
+        let height = Double(isSideways ? videoWidth : videoHeight)
+        return CGSize(width: width, height: height)
     }
 
     var progress: Double {
@@ -80,7 +84,7 @@ final class Player {
         for name in ["pause", "eof-reached", "mute", "paused-for-cache"] {
             mpv.observe(name, format: MPV_FORMAT_FLAG)
         }
-        for name in ["dwidth", "dheight"] {
+        for name in ["video-out-params/rotate", "video-out-params/dw", "video-out-params/dh"] {
             mpv.observe(name, format: MPV_FORMAT_INT64)
         }
         mpv.observe("media-title", format: MPV_FORMAT_STRING)
@@ -89,7 +93,16 @@ final class Player {
 
     func open(_ url: URL) {
         saveResumePoint()
-        state = PlaybackState(url: url, isLoading: true, volume: state.volume, isMuted: state.isMuted, maxResolution: state.maxResolution)
+        state = PlaybackState(
+            url: url,
+            isLoading: true,
+            volume: state.volume,
+            isMuted: state.isMuted,
+            videoWidth: state.videoWidth,
+            videoHeight: state.videoHeight,
+            videoRotation: state.videoRotation,
+            maxResolution: state.maxResolution
+        )
         onStateChange?(state)
         mpv.command("loadfile", url.mpvTarget)
         mpv.set("pause", false)
@@ -194,16 +207,22 @@ final class Player {
         case let ("mute", .flag(isMuted)): state.isMuted = isMuted
         case let ("paused-for-cache", .flag(isBuffering)): state.isBuffering = isBuffering
         case let ("media-title", .string(title)): state.title = title
-        case ("dwidth", .integer), ("dheight", .integer): readDisplaySize()
+        case ("video-out-params/dw", .integer), ("video-out-params/dh", .integer), ("video-out-params/rotate", .integer):
+            readDisplaySize()
         case ("eof-reached", .unavailable): state.isAtEnd = false
         default: break
         }
     }
 
     private func readDisplaySize() {
-        guard let width = mpv.integer("dwidth"), let height = mpv.integer("dheight") else { return }
+        guard
+            let width = mpv.integer("video-out-params/dw"),
+            let height = mpv.integer("video-out-params/dh"),
+            let rotation = mpv.integer("video-out-params/rotate")
+        else { return }
         state.videoWidth = width
         state.videoHeight = height
+        state.videoRotation = rotation
     }
 }
 

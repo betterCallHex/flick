@@ -22,6 +22,7 @@ final class VideoLayer: CAOpenGLLayer {
         super.init()
         isOpaque = true
         isAsynchronous = true
+        needsDisplayOnBoundsChange = true
         backgroundColor = NSColor.black.cgColor
         mpv_render_context_set_update_callback(renderContext, { context in
             Unmanaged<VideoLayer>.fromOpaque(context!).takeUnretainedValue().requestDraw()

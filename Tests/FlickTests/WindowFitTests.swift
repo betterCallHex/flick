@@ -33,3 +33,18 @@ struct WindowFitTests {
         #expect(!CGSize(width: 1920, height: 1080).hasSameShape(as: nil))
     }
 }
+
+struct VideoSizeTests {
+    @Test func usesTheStoredSizeForAnUnrotatedVideo() {
+        #expect(PlaybackState(videoWidth: 1280, videoHeight: 720).videoSize == CGSize(width: 1280, height: 720))
+    }
+
+    @Test func turnsAPhoneVideoRecordedSidewaysUpright() {
+        #expect(PlaybackState(videoWidth: 1280, videoHeight: 720, videoRotation: 90).videoSize == CGSize(width: 720, height: 1280))
+        #expect(PlaybackState(videoWidth: 1280, videoHeight: 720, videoRotation: 270).videoSize == CGSize(width: 720, height: 1280))
+    }
+
+    @Test func keepsTheShapeOfAnUpsideDownVideo() {
+        #expect(PlaybackState(videoWidth: 1280, videoHeight: 720, videoRotation: 180).videoSize == CGSize(width: 1280, height: 720))
+    }
+}
