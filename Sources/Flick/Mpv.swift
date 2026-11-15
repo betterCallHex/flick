@@ -88,6 +88,11 @@ final class Mpv {
         return mpv_get_property(handle, name, MPV_FORMAT_DOUBLE, &value) >= 0 ? value : nil
     }
 
+    func integer(_ name: String) -> Int64? {
+        var value: Int64 = 0
+        return mpv_get_property(handle, name, MPV_FORMAT_INT64, &value) >= 0 ? value : nil
+    }
+
     func string(_ name: String) -> String? {
         guard let value = mpv_get_property_string(handle, name) else { return nil }
         defer { mpv_free(value) }

@@ -113,21 +113,27 @@ struct HeadlessSessionTimeout: Error {
 }
 
 enum VideoFixture {
-    private static let generated = Result { try generate() }
+    private static let generated = Result { try generate(width: 320, height: 240) }
+    private static let generatedHalfSize = Result { try generate(width: 160, height: 120) }
 
     static func shared() throws -> URL {
         try generated.get()
     }
 
-    private static func generate() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("flick-fixture-20s-faststart.mp4")
+    static func halfSize() throws -> URL {
+        try generatedHalfSize.get()
+    }
+
+    private static func generate(width: Int, height: Int) throws -> URL {
+        let size = "\(width)x\(height)"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("flick-fixture-20s-\(size)-faststart.mp4")
         guard !FileManager.default.fileExists(atPath: url.path) else { return url }
         let partial = url.deletingLastPathComponent().appendingPathComponent("\(UUID().uuidString).mp4")
         let ffmpeg = Process()
         ffmpeg.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
         ffmpeg.arguments = [
             "-y", "-loglevel", "error",
-            "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30:duration=20",
+            "-f", "lavfi", "-i", "testsrc2=size=\(size):rate=30:duration=20",
             "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart", partial.path,
         ]
         try ffmpeg.run()

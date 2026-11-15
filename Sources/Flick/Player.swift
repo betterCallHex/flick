@@ -194,11 +194,16 @@ final class Player {
         case let ("mute", .flag(isMuted)): state.isMuted = isMuted
         case let ("paused-for-cache", .flag(isBuffering)): state.isBuffering = isBuffering
         case let ("media-title", .string(title)): state.title = title
-        case let ("dwidth", .integer(width)): state.videoWidth = width
-        case let ("dheight", .integer(height)): state.videoHeight = height
+        case ("dwidth", .integer), ("dheight", .integer): readDisplaySize()
         case ("eof-reached", .unavailable): state.isAtEnd = false
         default: break
         }
+    }
+
+    private func readDisplaySize() {
+        guard let width = mpv.integer("dwidth"), let height = mpv.integer("dheight") else { return }
+        state.videoWidth = width
+        state.videoHeight = height
     }
 }
 
