@@ -27,7 +27,10 @@ make test-web   # also plays real YouTube and Loom links (needs network)
 make bench      # launch-time budget check
 make check      # test + bench
 make install    # copy to ~/Applications
+make icon       # regenerate Resources/AppIcon.icns from scripts/make-icon.swift
 ```
+
+The app icon is drawn in code (`scripts/make-icon.swift`). To use other artwork, replace `Resources/AppIcon.icns`.
 
 To make Flick the default player: Finder → select a video → Get Info → Open with: Flick → Change All.
 
