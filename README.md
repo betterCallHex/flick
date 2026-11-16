@@ -67,8 +67,6 @@ make dmg-background  # regenerate the DMG window background
 make release    # build, sign the update, publish a GitHub release, update the cask
 ```
 
-CI (`.github/workflows/test.yml`) runs `make test` on every pull request and push to `main`, and `make test-web` nightly.
-
 To try a build in the running app without taking over the screen, `scripts/drive.sh start [file-or-link]` launches a muted copy named FlickDrive in the background, with its own library and settings; `scripts/drive.sh shot out.png` screenshots its window and `scripts/drive.sh stop` quits it and deletes its data. Drive its controls with `agent-desktop` (`agent-desktop snapshot --app FlickDrive`).
 
 The app icon is 32×32 pixel art in four muted colours, drawn in code (`scripts/make-icon.swift`), clipped to Apple's icon shape so macOS shows it full size. To use other artwork, replace `Resources/AppIcon.icns`.
