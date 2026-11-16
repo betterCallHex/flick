@@ -20,26 +20,44 @@ struct PlaybackState: Equatable {
     var volume = 100.0
     var isMuted = false
     var speed = 1.0
-    var videoWidth: Int64 = 0
-    var videoHeight: Int64 = 0
-    var videoRotation: Int64 = 0
-    var resolutions: [Int] = []
-    var maxResolution: Int?
-    var subtitleTracks: [SubtitleTrack] = []
-    var areSubtitlesVisible = true
+    var shape = VideoShape()
+    var quality = VideoQuality()
+    var subtitles = SubtitleState()
 
-    var hasSubtitles: Bool { !subtitleTracks.isEmpty }
+    static let observedProperties: [MpvProperty] = [
+        MpvProperty("time-pos", MPV_FORMAT_DOUBLE),
+        MpvProperty("duration", MPV_FORMAT_DOUBLE),
+        MpvProperty("volume", MPV_FORMAT_DOUBLE),
+        MpvProperty("speed", MPV_FORMAT_DOUBLE),
+        MpvProperty("pause", MPV_FORMAT_FLAG),
+        MpvProperty("eof-reached", MPV_FORMAT_FLAG),
+        MpvProperty("mute", MPV_FORMAT_FLAG),
+        MpvProperty("paused-for-cache", MPV_FORMAT_FLAG),
+        MpvProperty("media-title", MPV_FORMAT_STRING),
+    ] + VideoShape.observedProperties + SubtitleState.observedProperties
 
-    var isShowingSubtitles: Bool {
-        areSubtitlesVisible && subtitleTracks.contains(where: \.isSelected)
+    func startingNewFile(_ url: URL) -> PlaybackState {
+        var next = PlaybackState(url: url, isLoading: true, volume: volume, isMuted: isMuted)
+        next.shape = shape
+        next.quality = quality.forNextFile()
+        next.subtitles = subtitles.forNextFile()
+        return next
     }
 
-    var videoSize: CGSize? {
-        guard videoWidth > 0, videoHeight > 0 else { return nil }
-        let isSideways = videoRotation % 180 != 0
-        let width = Double(isSideways ? videoHeight : videoWidth)
-        let height = Double(isSideways ? videoWidth : videoHeight)
-        return CGSize(width: width, height: height)
+    mutating func apply(_ value: MpvPropertyValue, to name: String) {
+        switch (name, value) {
+        case let ("time-pos", .double(seconds)): position = seconds
+        case let ("duration", .double(seconds)): duration = seconds
+        case let ("volume", .double(newVolume)): volume = newVolume
+        case let ("speed", .double(newSpeed)): speed = newSpeed
+        case let ("pause", .flag(newIsPaused)): isPaused = newIsPaused
+        case let ("eof-reached", .flag(newIsAtEnd)): isAtEnd = newIsAtEnd
+        case ("eof-reached", .unavailable): isAtEnd = false
+        case let ("mute", .flag(newIsMuted)): isMuted = newIsMuted
+        case let ("paused-for-cache", .flag(newIsBuffering)): isBuffering = newIsBuffering
+        case let ("media-title", .string(newTitle)): title = newTitle
+        default: subtitles.apply(value, to: name)
+        }
     }
 
     var progress: Double {
@@ -68,6 +86,7 @@ final class Player {
         watchLaterDirectory: URL,
         volume: Double,
         showsSubtitles: Bool = true,
+        isMuted: Bool = false,
         subtitleLanguages: [String] = Locale.preferredLanguages
     ) -> [(name: String, value: String)] {
         [
@@ -95,6 +114,7 @@ final class Player {
             ("watch-later-options", "start,aid,sid,sub-delay,audio-delay"),
             ("volume-max", "100"),
             ("volume", String(volume)),
+            ("mute", isMuted ? "yes" : "no"),
         ]
     }
 
@@ -107,40 +127,20 @@ final class Player {
     init(mpv: Mpv) {
         self.mpv = mpv
         mpv.onEvent = { [weak self] event in self?.handle(event) }
-        for name in ["time-pos", "duration", "volume", "speed"] {
-            mpv.observe(name, format: MPV_FORMAT_DOUBLE)
-        }
-        for name in ["pause", "eof-reached", "mute", "paused-for-cache", "sub-visibility"] {
-            mpv.observe(name, format: MPV_FORMAT_FLAG)
-        }
-        for name in ["video-out-params/rotate", "video-out-params/dw", "video-out-params/dh"] {
-            mpv.observe(name, format: MPV_FORMAT_INT64)
-        }
-        mpv.observe("media-title", format: MPV_FORMAT_STRING)
-        mpv.observe("track-list", format: MPV_FORMAT_STRING)
+        PlaybackState.observedProperties.forEach(mpv.observe)
         mpv.addHook("on_load", priority: Self.afterYtdlHookPriority)
     }
 
     func open(_ url: URL) {
         saveResumePoint()
-        state = PlaybackState(
-            url: url,
-            isLoading: true,
-            volume: state.volume,
-            isMuted: state.isMuted,
-            videoWidth: state.videoWidth,
-            videoHeight: state.videoHeight,
-            videoRotation: state.videoRotation,
-            maxResolution: state.maxResolution,
-            areSubtitlesVisible: state.areSubtitlesVisible
-        )
+        state = state.startingNewFile(url)
         onStateChange?(state)
         load(url, retriesLeft: 1)
     }
 
     func limitResolution(to maxResolution: Int?) {
         mpv.set("ytdl-raw-options", Self.ytdlRawOptions(subtitleLanguages: Locale.preferredLanguages, maxResolution: maxResolution))
-        state.maxResolution = maxResolution
+        state.quality.maxResolution = maxResolution
         guard let url = state.url, url.resolvesThroughYtdl else {
             onStateChange?(state)
             return
@@ -199,12 +199,12 @@ final class Player {
     }
 
     func toggleSubtitles(preferredLanguages: [String] = Locale.preferredLanguages) {
-        guard !state.isShowingSubtitles else {
+        guard !state.subtitles.isShowing else {
             mpv.set("sub-visibility", false)
             return
         }
-        if !state.subtitleTracks.contains(where: \.isSelected),
-           let track = SubtitleTrack.preferred(among: state.subtitleTracks, languages: preferredLanguages) {
+        if !state.subtitles.tracks.contains(where: \.isSelected),
+           let track = SubtitleTrack.preferred(among: state.subtitles.tracks, languages: preferredLanguages) {
             mpv.set("sid", String(track.id))
         }
         mpv.set("sub-visibility", true)
@@ -224,8 +224,11 @@ final class Player {
             mpv.continueHook(id)
         case .loadFailed:
             fail(.unplayable)
+        case let .propertyChanged(name, .integer) where VideoShape.isObserved(name):
+            state.shape = VideoShape(reading: mpv) ?? state.shape
+            onStateChange?(state)
         case let .propertyChanged(name, value):
-            apply(value, to: name)
+            state.apply(value, to: name)
             onStateChange?(state)
         }
     }
@@ -261,43 +264,13 @@ final class Player {
         guard let url = state.url, url.resolvesThroughYtdl,
               let result = mpv.string("user-data/mpv/ytdl/json-subprocess-result"),
               let info = YtdlInfo(subprocessResult: result) else { return }
-        state.resolutions = info.resolutions
+        state.quality.resolutions = info.resolutions
         state.thumbnail = info.thumbnail
         onStateChange?(state)
         guard let cookie = info.signedSegmentCookie else { return }
         mpv.command("change-list", "file-local-options/http-header-fields", "append", "Cookie: \(cookie)")
     }
 
-    private func apply(_ value: MpvPropertyValue, to name: String) {
-        switch (name, value) {
-        case let ("time-pos", .double(seconds)): state.position = seconds
-        case let ("duration", .double(seconds)): state.duration = seconds
-        case let ("volume", .double(volume)): state.volume = volume
-        case let ("speed", .double(speed)): state.speed = speed
-        case let ("pause", .flag(isPaused)): state.isPaused = isPaused
-        case let ("eof-reached", .flag(isAtEnd)): state.isAtEnd = isAtEnd
-        case let ("mute", .flag(isMuted)): state.isMuted = isMuted
-        case let ("paused-for-cache", .flag(isBuffering)): state.isBuffering = isBuffering
-        case let ("media-title", .string(title)): state.title = title
-        case let ("track-list", .string(json)): state.subtitleTracks = SubtitleTrack.tracks(inTrackList: json)
-        case let ("sub-visibility", .flag(isVisible)): state.areSubtitlesVisible = isVisible
-        case ("video-out-params/dw", .integer), ("video-out-params/dh", .integer), ("video-out-params/rotate", .integer):
-            readDisplaySize()
-        case ("eof-reached", .unavailable): state.isAtEnd = false
-        default: break
-        }
-    }
-
-    private func readDisplaySize() {
-        guard
-            let width = mpv.integer("video-out-params/dw"),
-            let height = mpv.integer("video-out-params/dh"),
-            let rotation = mpv.integer("video-out-params/rotate")
-        else { return }
-        state.videoWidth = width
-        state.videoHeight = height
-        state.videoRotation = rotation
-    }
 }
 
 extension Comparable {

@@ -31,41 +31,41 @@ struct SubtitleToggleTests {
     @Test func hidesAndShowsSubtitlesNextToALocalFile() async throws {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
         let opened = try await session.open(try SubtitledVideoFixture.make())
-        #expect(opened.isShowingSubtitles)
+        #expect(opened.subtitles.isShowing)
 
         session.perform { $0.toggleSubtitles() }
-        try await session.waitUntil { !$0.isShowingSubtitles }
+        try await session.waitUntil { !$0.subtitles.isShowing }
 
         session.perform { $0.toggleSubtitles() }
-        try await session.waitUntil(\.isShowingSubtitles)
+        try await session.waitUntil(\.subtitles.isShowing)
     }
 
     @Test func turningSubtitlesOnPicksATrackWhenNoneIsSelected() async throws {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
         try await session.open(try SubtitledVideoFixture.make())
         session.perform { $0.mpv.set("sid", "no") }
-        try await session.waitUntil { $0.hasSubtitles && !$0.isShowingSubtitles }
+        try await session.waitUntil { $0.subtitles.hasSubtitles && !$0.subtitles.isShowing }
 
         session.perform { $0.toggleSubtitles() }
-        try await session.waitUntil(\.isShowingSubtitles)
+        try await session.waitUntil(\.subtitles.isShowing)
     }
 
     @Test func startsHiddenWhenTheReaderTurnedSubtitlesOff() async throws {
         let options = Player.options(watchLaterDirectory: try temporaryDirectory(), volume: 0, showsSubtitles: false)
         let session = try HeadlessSession(options: options)
         let opened = try await session.open(try SubtitledVideoFixture.make())
-        #expect(opened.hasSubtitles && !opened.isShowingSubtitles)
+        #expect(opened.subtitles.hasSubtitles && !opened.subtitles.isShowing)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
     func showsYouTubeCaptions() async throws {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
         let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=jNQXAC9IVRw")!, timeout: .seconds(45))
-        #expect(playing.hasSubtitles)
+        #expect(playing.subtitles.hasSubtitles)
 
         session.perform { $0.toggleSubtitles(preferredLanguages: ["en"]) }
-        let showing = try await session.waitUntil(\.isShowingSubtitles)
-        #expect(showing.subtitleTracks.first(where: \.isSelected)?.language?.hasPrefix("en") == true)
+        let showing = try await session.waitUntil(\.subtitles.isShowing)
+        #expect(showing.subtitles.tracks.first(where: \.isSelected)?.language?.hasPrefix("en") == true)
     }
 }
 
