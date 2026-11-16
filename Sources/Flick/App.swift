@@ -22,11 +22,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: PlayerWindowController?
     private var player: Player?
     private var firstFrameProbe: FirstFrameProbe?
+    private var uploadStreams: PhoneUploadStreams?
+    private var phoneWindow: PhoneWindowController?
     private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.mainMenu = MainMenu.make()
+        try? FileManager.default.removeItem(at: launch.phoneVideosDirectory)
         HomebrewTools.exposeToChildProcesses()
         UserDefaults.standard.register(defaults: [Self.volumeKey: 100.0, Self.subtitlesKey: true])
         do {
@@ -54,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        controller?.discardPhoneUpload()
+        try? FileManager.default.removeItem(at: launch.phoneVideosDirectory)
         guard let player else { return }
         controller?.recordProgress()
         player.saveResumePoint()
@@ -78,6 +83,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller?.open(url)
     }
 
+    @objc func playFromPhone(_ sender: Any?) {
+        let phoneWindow = phoneWindow ?? makePhoneWindow()
+        self.phoneWindow = phoneWindow
+        phoneWindow.present()
+    }
+
+    private func makePhoneWindow() -> PhoneWindowController {
+        let phoneWindow = PhoneWindowController(destination: launch.phoneVideosDirectory)
+        phoneWindow.onLink = { [weak self] url in self?.controller?.open(url) }
+        phoneWindow.onUploadStarted = { [weak self] upload in
+            self?.uploadStreams?.add(upload)
+            self?.controller?.play(upload)
+        }
+        return phoneWindow
+    }
+
     private func startPlayer() throws {
         let defaults = UserDefaults.standard
         let options = Player.options(
@@ -87,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isMuted: launch.isDriven
         )
         let mpv = try Mpv(options: options)
+        uploadStreams = PhoneUploadStreams(mpv: mpv)
         let player = Player(mpv: mpv)
         let videoLayer = try VideoLayer(mpv: mpv)
         self.player = player
@@ -116,6 +138,7 @@ struct LaunchEnvironment {
 
     var watchLaterDirectory: URL { dataDirectory.appending(component: "watch_later") }
     var libraryFile: URL { dataDirectory.appending(component: "library.json") }
+    var phoneVideosDirectory: URL { (isDriven ? dataDirectory : .temporaryDirectory).appending(component: "From Phone") }
 }
 
 enum LinkPrompt {
@@ -200,6 +223,7 @@ enum MainMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(item("Open…", #selector(AppDelegate.openDocument(_:)), "o", [.command]))
         menu.addItem(item("Open URL…", #selector(AppDelegate.openLocation(_:)), "o", [.command, .shift]))
+        menu.addItem(item("Play from Phone…", #selector(AppDelegate.playFromPhone(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Show Library", #selector(PlayerWindowController.toggleLibrary(_:)), "l", [.command]))
         menu.addItem(item("Add Files to Library…", #selector(PlayerWindowController.addFilesToLibrary(_:))))

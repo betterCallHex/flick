@@ -88,9 +88,11 @@ final class LibraryView: NSView, NSCollectionViewDataSource, NSCollectionViewDel
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let addLink = headerButton("Add Link…", symbol: "link", action: #selector(addLinkPressed))
         let addFiles = headerButton("Add Files…", symbol: "plus", action: #selector(addFilesPressed))
+        let fromPhone = headerButton("From Phone…", symbol: "iphone", action: #selector(AppDelegate.playFromPhone(_:)))
+        fromPhone.target = nil
         header.orientation = .horizontal
         header.spacing = 8
-        header.setViews([title, spacer, addLink, addFiles], in: .leading)
+        header.setViews([title, spacer, fromPhone, addLink, addFiles], in: .leading)
     }
 
     private func headerButton(_ title: String, symbol: String, action: Selector) -> NSButton {
@@ -376,9 +378,13 @@ final class EmptyStateView: NSStackView {
         hint.textColor = NSColor.white.withAlphaComponent(0.5)
         let openButton = NSButton(title: "Open…", target: self, action: #selector(openPressed))
         openButton.bezelStyle = .push
+        let fromPhoneButton = NSButton(title: "From Phone…", target: nil, action: #selector(AppDelegate.playFromPhone(_:)))
+        fromPhoneButton.bezelStyle = .push
+        let buttons = NSStackView(views: [openButton, fromPhoneButton])
+        buttons.spacing = 8
         orientation = .vertical
         spacing = 8
-        setViews([icon, title, hint, openButton], in: .center)
+        setViews([icon, title, hint, buttons], in: .center)
         setCustomSpacing(14, after: icon)
         setCustomSpacing(16, after: hint)
     }

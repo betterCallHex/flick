@@ -98,6 +98,16 @@ To change the quality, click the resolution (for example **1080p**) in the contr
 
 Private videos (a Loom or Drive file that needs you signed in) are not supported yet.
 
+## Play from your phone
+
+File → **Play from Phone…** (or **From Phone…** in the library) shows a QR code. Scan it with an iPhone or Android phone on the same Wi-Fi, pick a video from Photos, Files or the gallery, and it plays in Flick. It starts as soon as the first part arrives (for a video whose index sits at the end of the file, once the whole file has arrived). The page can also send a web link.
+
+<img src="docs/phone.png" width="340" alt="Play from Phone window with a QR code">
+
+Nothing is kept: the video streams into a temporary folder, stays out of the library and is deleted when you play something else or quit. Keep the page open on the phone until it says Done. The server listens only while the window is open, and the page sits behind a random address that changes each time. If the macOS firewall asks whether Flick may accept incoming connections, allow it.
+
+Videos inside apps that offer no file, such as Telegram, can't reach this page. On an iPhone, turn on System Settings → General → AirDrop & Handoff → **AirPlay Receiver** on the Mac and use the app's AirPlay button or Screen Mirroring; it plays in macOS's AirPlay window, not Flick. On Android, use the app's Mac version or mirror the screen with [scrcpy](https://github.com/Genymobile/scrcpy).
+
 ## Controls
 
 | | |
