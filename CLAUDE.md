@@ -1,6 +1,6 @@
 ## Checking a change in the running app
 
-Run it with `scripts/drive.sh` (muted, in the background, its own data) and drive it with `agent-desktop`; `scripts/drive.sh stop` before you finish. See the Build section of `README.md`.
+Run it with `scripts/drive.sh` (muted, in the background, its own data) and drive it with `agent-desktop` snapshots and clicks on buttons. Pop-up menus and key presses bring Flick in front of the user's work: check those through tests instead. Open more files or links with `open -g`. Run `scripts/drive.sh stop` before you finish. See the Build section of `README.md`.
 
 ## Agent skills
 
