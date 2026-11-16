@@ -359,3 +359,35 @@ final class Thumbnails {
         return NSImage(data: data)
     }
 }
+
+final class EmptyStateView: NSStackView {
+    var onOpen: (() -> Void)?
+
+    init() {
+        super.init(frame: .zero)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "play.rectangle", accessibilityDescription: nil) ?? NSImage())
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 44, weight: .light)
+        icon.contentTintColor = NSColor.white.withAlphaComponent(0.35)
+        let title = NSTextField(labelWithString: "Drop a video or link here")
+        title.font = .systemFont(ofSize: 17, weight: .semibold)
+        title.textColor = NSColor.white.withAlphaComponent(0.9)
+        let hint = NSTextField(labelWithString: "⌘O to choose a file  ·  ⌘V to paste a YouTube, Loom or other link")
+        hint.font = .systemFont(ofSize: 12)
+        hint.textColor = NSColor.white.withAlphaComponent(0.5)
+        let openButton = NSButton(title: "Open…", target: self, action: #selector(openPressed))
+        openButton.bezelStyle = .push
+        orientation = .vertical
+        spacing = 8
+        setViews([icon, title, hint, openButton], in: .center)
+        setCustomSpacing(14, after: icon)
+        setCustomSpacing(16, after: hint)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("EmptyStateView is created in code only")
+    }
+
+    @objc private func openPressed() {
+        onOpen?()
+    }
+}
