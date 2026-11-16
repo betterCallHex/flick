@@ -63,7 +63,10 @@ start() {
 shot() {
   local out="$1" id
   id=$(window_id) || { echo "no FlickDrive window: run start first" >&2; exit 1; }
-  screencapture -x -o -l "$id" "$out"
+  screencapture -x -o -l "$id" "$out" 2>/dev/null || {
+    echo "FlickDrive's window is off screen (on another Space or full-screen app); retry once it is visible" >&2
+    exit 1
+  }
   sips -Z 1400 "$out" >/dev/null
   echo "$out"
 }
