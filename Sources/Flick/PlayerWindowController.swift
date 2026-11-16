@@ -11,6 +11,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     private let playerView: PlayerView
     private let windowFit: WindowFit
     private var previousState = PlaybackState()
+    private var phoneUpload: PhoneUpload?
 
     var onReveal: (() -> Void)?
 
@@ -49,11 +50,33 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             resumeFromLibrary()
             return
         }
+        discardPhoneUpload()
         player.open(url)
         window.title = url.isFileURL ? url.lastPathComponent : url.displayHost
         window.representedURL = url.isFileURL ? url : nil
-        window.standardWindowButton(.documentIconButton)?.image = NSApp.applicationIconImage
         if url.isFileURL { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
+        show(window)
+    }
+
+    func play(_ upload: PhoneUpload) {
+        guard let window else { return }
+        library.record(player.state)
+        libraryView.isHidden = true
+        discardPhoneUpload()
+        phoneUpload = upload
+        player.open(upload.file, streamingFrom: upload.streamTarget)
+        window.title = upload.file.lastPathComponent
+        window.representedURL = nil
+        show(window)
+    }
+
+    func discardPhoneUpload() {
+        phoneUpload?.discard()
+        phoneUpload = nil
+    }
+
+    private func show(_ window: NSWindow) {
+        window.standardWindowButton(.documentIconButton)?.image = NSApp.applicationIconImage
         guard !window.isVisible else {
             revealChrome()
             return

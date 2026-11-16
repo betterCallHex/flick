@@ -6,6 +6,7 @@ struct LaunchEnvironmentTests {
     @Test func keepsDataInApplicationSupportByDefault() {
         let launch = LaunchEnvironment(environment: [:])
         #expect(launch.libraryFile == URL.applicationSupportDirectory.appending(components: "Flick", "library.json"))
+        #expect(launch.phoneVideosDirectory == URL.temporaryDirectory.appending(component: "From Phone"))
         #expect(!launch.isDriven)
     }
 
@@ -13,6 +14,7 @@ struct LaunchEnvironmentTests {
         let launch = LaunchEnvironment(environment: ["FLICK_DRIVE_DIR": "/tmp/flick-drive/data"])
         #expect(launch.libraryFile.path == "/tmp/flick-drive/data/library.json")
         #expect(launch.watchLaterDirectory.path == "/tmp/flick-drive/data/watch_later")
+        #expect(launch.phoneVideosDirectory.path == "/tmp/flick-drive/data/From Phone")
         #expect(launch.isDriven)
     }
 }

@@ -82,6 +82,7 @@ final class Player {
     let mpv: Mpv
     private var loadGeneration = 0
     private var refusedStreamReloadsLeft = 0
+    private var streamTarget: String?
 
     static func options(
         watchLaterDirectory: URL,
@@ -132,8 +133,9 @@ final class Player {
         mpv.addHook("on_load", priority: Self.afterYtdlHookPriority)
     }
 
-    func open(_ url: URL) {
+    func open(_ url: URL, streamingFrom stream: String? = nil) {
         saveResumePoint()
+        streamTarget = stream
         state = state.startingNewFile(url)
         onStateChange?(state)
         refusedStreamReloadsLeft = 1
@@ -154,7 +156,7 @@ final class Player {
     }
 
     func saveResumePoint() {
-        guard let url = state.url else { return }
+        guard let url = state.url, streamTarget == nil else { return }
         if state.isWorthResuming {
             mpv.command("write-watch-later-config")
         } else {
@@ -255,9 +257,9 @@ final class Player {
         loadGeneration += 1
         let generation = loadGeneration
         if let start {
-            mpv.command("loadfile", url.mpvTarget, "replace", "-1", "start=\(start)")
+            mpv.command("loadfile", target(for: url), "replace", "-1", "start=\(start)")
         } else {
-            mpv.command("loadfile", url.mpvTarget)
+            mpv.command("loadfile", target(for: url))
             mpv.set("pause", false)
         }
         guard url.resolvesThroughYtdl else { return }
@@ -270,6 +272,10 @@ final class Player {
             }
             load(url, retriesLeft: retriesLeft - 1, startingAt: start)
         }
+    }
+
+    private func target(for url: URL) -> String {
+        streamTarget ?? url.mpvTarget
     }
 
     private func fail(_ failure: LoadFailure) {
