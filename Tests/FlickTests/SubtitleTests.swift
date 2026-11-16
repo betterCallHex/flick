@@ -59,12 +59,14 @@ struct SubtitleToggleTests {
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
     func showsYouTubeCaptions() async throws {
-        let session = try HeadlessSession(watchLater: try temporaryDirectory())
-        let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=jNQXAC9IVRw")!, timeout: .seconds(45))
-        #expect(playing.subtitles.hasSubtitles)
+        let showing = try await retryingWhenYouTubeRefusesAStream {
+            let session = try HeadlessSession(watchLater: try temporaryDirectory())
+            let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=jNQXAC9IVRw")!, timeout: .seconds(45))
+            #expect(playing.subtitles.hasSubtitles)
 
-        session.perform { $0.toggleSubtitles(preferredLanguages: ["en"]) }
-        let showing = try await session.waitUntil(\.subtitles.isShowing)
+            session.perform { $0.toggleSubtitles(preferredLanguages: ["en"]) }
+            return try await session.waitUntil(\.subtitles.isShowing)
+        }
         #expect(showing.subtitles.tracks.first(where: \.isSelected)?.language?.hasPrefix("en") == true)
     }
 }

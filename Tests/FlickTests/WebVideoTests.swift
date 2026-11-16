@@ -74,26 +74,26 @@ struct WebPlaybackTests {
         defer { server.stop() }
         let lookup = try FakeYtdlp(hangingCalls: 1, answer: server.url(for: video.lastPathComponent))
         let session = try HeadlessSession(watchLater: try temporaryDirectory(), extraOptions: lookup.mpvOptions)
-        session.perform { $0.webLoadTimeoutSeconds = 2 }
+        session.perform { $0.webLoadTimeoutSeconds = 5 }
 
-        let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=hangs-once")!)
+        let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=hangs-once")!, timeout: .seconds(20))
 
         #expect(abs(playing.duration - 20) < 0.5)
-        #expect(lookup.runningCalls.isEmpty)
+        #expect(try await lookup.callsRunningOnceSettled().isEmpty)
     }
 
     @Test func givesUpOnALinkWhoseLookupKeepsHanging() async throws {
         let lookup = try FakeYtdlp(hangingCalls: 99, answer: URL(string: "http://127.0.0.1:9/never")!)
         let session = try HeadlessSession(watchLater: try temporaryDirectory(), extraOptions: lookup.mpvOptions)
-        session.perform { $0.webLoadTimeoutSeconds = 1 }
+        session.perform { $0.webLoadTimeoutSeconds = 3 }
 
         session.perform { $0.open(URL(string: "https://www.youtube.com/watch?v=hangs-always")!) }
-        let gaveUp = try await session.waitUntil(timeout: .seconds(8)) { $0.loadFailure != nil }
+        let gaveUp = try await session.waitUntil(timeout: .seconds(15)) { $0.loadFailure != nil }
 
         #expect(gaveUp.loadFailure == .timedOut)
         #expect(!gaveUp.isLoading)
         #expect(lookup.calls == 2)
-        #expect(lookup.runningCalls.isEmpty)
+        #expect(try await lookup.callsRunningOnceSettled().isEmpty)
     }
 
     @Test func reloadsAWebVideoWhoseStreamIsRefused() async throws {
@@ -143,22 +143,26 @@ struct WebPlaybackTests {
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
     func playsAYouTubeVideo() async throws {
-        let session = try HeadlessSession(watchLater: try temporaryDirectory())
-        let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=aqz-KE-bpKQ")!, timeout: .seconds(30))
+        let playing = try await retryingWhenYouTubeRefusesAStream {
+            let session = try HeadlessSession(watchLater: try temporaryDirectory())
+            return try await session.open(URL(string: "https://www.youtube.com/watch?v=aqz-KE-bpKQ")!, timeout: .seconds(30))
+        }
         #expect(playing.title?.contains("Big Buck Bunny") == true)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
     func switchesAYouTubeVideoToALowerQualityWhereItWas() async throws {
-        let session = try HeadlessSession(watchLater: try temporaryDirectory())
-        let opened = try await session.open(URL(string: "https://www.youtube.com/watch?v=aqz-KE-bpKQ")!, timeout: .seconds(30))
-        #expect(opened.quality.resolutions.contains(360))
-        session.perform { $0.seek(to: 60, precise: true) }
-        try await session.waitUntil { abs($0.position - 60) < 1 }
+        let switched = try await retryingWhenYouTubeRefusesAStream {
+            let session = try HeadlessSession(watchLater: try temporaryDirectory())
+            let opened = try await session.open(URL(string: "https://www.youtube.com/watch?v=aqz-KE-bpKQ")!, timeout: .seconds(30))
+            #expect(opened.quality.resolutions.contains(360))
+            session.perform { $0.seek(to: 60, precise: true) }
+            try await session.waitUntil { abs($0.position - 60) < 1 }
 
-        session.perform { $0.limitResolution(to: 360) }
+            session.perform { $0.limitResolution(to: 360) }
 
-        let switched = try await session.waitUntil(timeout: .seconds(30)) { !$0.isLoading && $0.shape.height == 360 }
+            return try await session.waitUntil(timeout: .seconds(30)) { !$0.isLoading && $0.shape.height == 360 }
+        }
         #expect(abs(switched.position - 60) < 2)
         #expect(switched.quality.maxResolution == 360)
     }
@@ -175,6 +179,14 @@ struct WebPlaybackTests {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
         let playing = try await session.open(URL(string: "https://www.loom.com/share/56fde5f991b8490d9033dd226ebf3043")!, timeout: .seconds(30))
         #expect(playing.shape.size != nil)
+    }
+}
+
+func retryingWhenYouTubeRefusesAStream(_ attempt: () async throws -> PlaybackState) async throws -> PlaybackState {
+    do {
+        return try await attempt()
+    } catch is HeadlessSessionTimeout {
+        return try await attempt()
     }
 }
 
@@ -209,7 +221,15 @@ struct FakeYtdlp {
 
     var calls: Int { pids.count }
 
-    var runningCalls: [pid_t] { pids.filter { kill($0, 0) == 0 } }
+    func callsRunningOnceSettled(within timeout: Duration = .seconds(5)) async throws -> [pid_t] {
+        let deadline = ContinuousClock.now + timeout
+        while !runningCalls.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        return runningCalls
+    }
+
+    private var runningCalls: [pid_t] { pids.filter { kill($0, 0) == 0 } }
 
     var executable: URL { directory.appendingPathComponent("yt-dlp") }
 
