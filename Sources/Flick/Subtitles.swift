@@ -1,4 +1,33 @@
+import CMpv
 import Foundation
+
+struct SubtitleState: Equatable {
+    static let observedProperties = [
+        MpvProperty("track-list", MPV_FORMAT_STRING),
+        MpvProperty("sub-visibility", MPV_FORMAT_FLAG),
+    ]
+
+    var tracks: [SubtitleTrack] = []
+    var isVisible = true
+
+    var hasSubtitles: Bool { !tracks.isEmpty }
+
+    var isShowing: Bool {
+        isVisible && tracks.contains(where: \.isSelected)
+    }
+
+    func forNextFile() -> SubtitleState {
+        SubtitleState(isVisible: isVisible)
+    }
+
+    mutating func apply(_ value: MpvPropertyValue, to name: String) {
+        switch (name, value) {
+        case let ("track-list", .string(json)): tracks = SubtitleTrack.tracks(inTrackList: json)
+        case let ("sub-visibility", .flag(newIsVisible)): isVisible = newIsVisible
+        default: break
+        }
+    }
+}
 
 struct SubtitleTrack: Equatable {
     var id: Int

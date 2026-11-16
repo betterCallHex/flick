@@ -95,7 +95,14 @@ struct WebVideoLookup {
     }
 }
 
-enum VideoQuality {
+struct VideoQuality: Equatable {
+    var resolutions: [Int] = []
+    var maxResolution: Int?
+
+    func forNextFile() -> VideoQuality {
+        VideoQuality(maxResolution: maxResolution)
+    }
+
     static func ytdlRawOptions(maxResolution: Int?) -> String {
         maxResolution.map { "format-sort=res:\($0)" } ?? ""
     }
