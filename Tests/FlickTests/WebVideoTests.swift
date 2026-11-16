@@ -96,6 +96,51 @@ struct WebPlaybackTests {
         #expect(lookup.runningCalls.isEmpty)
     }
 
+    @Test func reloadsAWebVideoWhoseStreamIsRefused() async throws {
+        let video = try VideoFixture.shared()
+        let server = try LocalFileServer(directory: video.deletingLastPathComponent())
+        defer { server.stop() }
+        let lookup = try FakeYtdlp(refusedCalls: [1], answer: server.url(for: video.lastPathComponent))
+        let session = try HeadlessSession(watchLater: try temporaryDirectory(), extraOptions: lookup.mpvOptions)
+
+        let playing = try await session.open(URL(string: "https://www.youtube.com/watch?v=refused-once")!)
+
+        #expect(abs(playing.duration - 20) < 0.5)
+        #expect(lookup.calls == 2)
+    }
+
+    @Test func keepsThePlaceWhenTheStreamOfANewQualityIsRefused() async throws {
+        let video = try VideoFixture.shared()
+        let server = try LocalFileServer(directory: video.deletingLastPathComponent())
+        defer { server.stop() }
+        let lookup = try FakeYtdlp(refusedCalls: [2], answer: server.url(for: video.lastPathComponent))
+        let session = try HeadlessSession(watchLater: try temporaryDirectory(), extraOptions: lookup.mpvOptions)
+        try await session.open(URL(string: "https://www.youtube.com/watch?v=refused-on-switch")!)
+        session.perform { $0.seek(to: 10, precise: true) }
+        try await session.waitUntil { abs($0.position - 10) < 1 }
+
+        session.perform { $0.limitResolution(to: 360) }
+
+        let switched = try await session.waitUntil { lookup.calls == 3 && !$0.isLoading && !$0.isAtEnd && $0.position > 0 }
+        #expect(abs(switched.position - 10) < 2)
+        #expect(!switched.isAtEnd)
+    }
+
+    @Test func saysALinkCantPlayWhenItsStreamIsRefusedAgain() async throws {
+        let video = try VideoFixture.shared()
+        let server = try LocalFileServer(directory: video.deletingLastPathComponent())
+        defer { server.stop() }
+        let lookup = try FakeYtdlp(refusedCalls: [1, 2, 3], answer: server.url(for: video.lastPathComponent))
+        let session = try HeadlessSession(watchLater: try temporaryDirectory(), extraOptions: lookup.mpvOptions)
+
+        session.perform { $0.open(URL(string: "https://www.youtube.com/watch?v=refused-always")!) }
+        let gaveUp = try await session.waitUntil { $0.loadFailure != nil }
+
+        #expect(gaveUp.loadFailure == .unplayable)
+        #expect(!gaveUp.isLoading)
+        #expect(lookup.calls == 2)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
     func playsAYouTubeVideo() async throws {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
@@ -137,17 +182,25 @@ struct FakeYtdlp {
     static let thumbnail = URL(string: "https://i.ytimg.com/vi/fake/maxresdefault.jpg")!
     let directory: URL
 
-    init(hangingCalls: Int, answer: URL) throws {
+    init(hangingCalls: Int = 0, refusedCalls: [Int] = [], answer: URL) throws {
         directory = try temporaryDirectory()
         let info = #"{"id":"fake","title":"Fake","ext":"mp4","thumbnail":"\#(Self.thumbnail.absoluteString)","url":"\#(answer.absoluteString)"}"#
         let script = """
         #!/bin/sh
         echo $$ >> '\(directory.path)/calls'
-        if [ "$(wc -l < '\(directory.path)/calls')" -le \(hangingCalls) ]; then exec sleep 600; fi
+        call=$(wc -l < '\(directory.path)/calls' | tr -d ' ')
+        if [ "$call" -le \(hangingCalls) ]; then exec sleep 600; fi
+        case " \(refusedCalls.map(String.init).joined(separator: " ")) " in *" $call "*) echo '\(Self.refusedStreamsInfo(near: answer))'; exit;; esac
         echo '\(info)'
         """
         try script.write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+    }
+
+    private static func refusedStreamsInfo(near answer: URL) -> String {
+        let video = #"{"format_id":"137","url":"\#(answer.absoluteString).refused-video","protocol":"https","ext":"mp4","vcodec":"avc1.640028","acodec":"none","width":320,"height":240,"fps":30,"tbr":1000}"#
+        let audio = #"{"format_id":"140","url":"\#(answer.absoluteString).refused-audio","protocol":"https","ext":"m4a","vcodec":"none","acodec":"mp4a.40.2","asr":44100,"audio_channels":2,"tbr":128}"#
+        return #"{"id":"fake","title":"Fake","duration":20,"ext":"mp4","formats":[\#(video),\#(audio)],"requested_formats":[\#(video),\#(audio)]}"#
     }
 
     var mpvOptions: [(name: String, value: String)] {

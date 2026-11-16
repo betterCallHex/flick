@@ -42,6 +42,7 @@ enum MpvPropertyValue: Equatable {
 enum MpvEvent: Equatable {
     case fileLoaded
     case loadFailed
+    case streamRefused
     case hook(name: String, id: UInt64)
     case propertyChanged(name: String, value: MpvPropertyValue)
 }
@@ -61,6 +62,7 @@ final class Mpv {
             try Self.check(mpv_set_option_string(handle, option.name, option.value))
         }
         try Self.check(mpv_initialize(handle))
+        try Self.check(mpv_request_log_messages(handle, "error"))
         wakeupRelay.takeUnretainedValue().mpv = self
         mpv_set_wakeup_callback(handle, { context in
             Unmanaged<WakeupRelay>.fromOpaque(context!).takeUnretainedValue().wake()
@@ -141,6 +143,10 @@ final class Mpv {
         case MPV_EVENT_END_FILE:
             let endFile = event.data.load(as: mpv_event_end_file.self)
             return endFile.reason == MPV_END_FILE_REASON_ERROR ? .loadFailed : nil
+        case MPV_EVENT_LOG_MESSAGE:
+            let message = event.data.load(as: mpv_event_log_message.self)
+            let isRefusedSegment = String(cString: message.prefix) == "timeline" && String(cString: message.text).hasPrefix("failed to load segment")
+            return isRefusedSegment ? .streamRefused : nil
         case MPV_EVENT_HOOK:
             let hook = event.data.load(as: mpv_event_hook.self)
             return .hook(name: String(cString: hook.name), id: hook.id)
