@@ -77,9 +77,9 @@ final class HeadlessSession: @unchecked Sendable {
         self.states = states
         iterator = states.makeAsyncIterator()
         heartbeat = DispatchSource.makeTimerSource(queue: queue)
+        let player = player
         queue.sync { player.onStateChange = { continuation.yield($0) } }
         heartbeat.schedule(deadline: .now(), repeating: .milliseconds(100))
-        let player = player
         heartbeat.setEventHandler { continuation.yield(player.state) }
         heartbeat.resume()
     }
