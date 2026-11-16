@@ -22,6 +22,24 @@ struct PlaybackStateTests {
     @Test func remembersAStreamWithoutDuration() {
         #expect(PlaybackState(position: 60, duration: 0).isWorthResuming)
     }
+
+    @Test func openingTheNextFileKeepsTheViewersChoicesAndForgetsTheFile() {
+        let first = URL(fileURLWithPath: "/tmp/first.mp4")
+        let second = URL(string: "https://www.youtube.com/watch?v=aqz-KE-bpKQ")!
+        var state = PlaybackState(url: first, title: "First", position: 30, duration: 60, volume: 40, isMuted: true)
+        state.shape = VideoShape(width: 1280, height: 720, rotation: 90)
+        state.quality = VideoQuality(resolutions: [1080, 720], maxResolution: 720)
+        state.subtitles = SubtitleState(tracks: [SubtitleTrack(id: 1, language: "en", isSelected: true)], isVisible: false)
+
+        let next = state.startingNewFile(second)
+
+        #expect(next.url == second && next.isLoading)
+        #expect(next.title == nil && next.position == 0 && next.duration == 0)
+        #expect(next.volume == 40 && next.isMuted)
+        #expect(next.shape == state.shape)
+        #expect(next.quality == VideoQuality(maxResolution: 720))
+        #expect(next.subtitles == SubtitleState(isVisible: false))
+    }
 }
 
 @Suite(.serialized)
@@ -91,7 +109,7 @@ final class HeadlessSession: @unchecked Sendable {
     @discardableResult
     func open(_ url: URL, timeout: Duration = .seconds(10)) async throws -> PlaybackState {
         perform { $0.open(url) }
-        return try await waitUntil(timeout: timeout) { $0.duration > 0 && $0.videoSize != nil && !$0.isLoading }
+        return try await waitUntil(timeout: timeout) { $0.duration > 0 && $0.shape.size != nil && !$0.isLoading }
     }
 
     func perform(_ action: (Player) -> Void) {

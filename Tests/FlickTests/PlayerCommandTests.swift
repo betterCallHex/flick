@@ -54,7 +54,7 @@ struct PlayerCommandTests {
         let sameSize = try temporaryDirectory().appendingPathComponent("same-size.mp4")
         try FileManager.default.copyItem(at: try VideoFixture.shared(), to: sameSize)
         let switched = try await session.open(sameSize)
-        #expect(switched.videoSize == CGSize(width: 320, height: 240))
+        #expect(switched.shape.size == CGSize(width: 320, height: 240))
     }
 
     @Test func reportsBothSidesOfANewResolutionTogether() async throws {
@@ -65,8 +65,8 @@ struct PlayerCommandTests {
         session.perform { $0.mpv.command("loadfile", halfSize.path, "replace") }
 
         try await session.waitUntil { state in
-            if let size = state.videoSize { shapes.append(size) }
-            return state.videoSize == CGSize(width: 160, height: 120)
+            if let size = state.shape.size { shapes.append(size) }
+            return state.shape.size == CGSize(width: 160, height: 120)
         }
         #expect(shapes.allSatisfy { $0.hasSameShape(as: CGSize(width: 4, height: 3)) })
     }

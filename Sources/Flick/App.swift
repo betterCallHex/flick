@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller?.recordProgress()
         player.saveResumePoint()
         UserDefaults.standard.set(player.state.volume, forKey: Self.volumeKey)
-        UserDefaults.standard.set(player.state.areSubtitlesVisible, forKey: Self.subtitlesKey)
+        UserDefaults.standard.set(player.state.subtitles.isVisible, forKey: Self.subtitlesKey)
     }
 
     @objc func checkForUpdates(_ sender: Any?) {

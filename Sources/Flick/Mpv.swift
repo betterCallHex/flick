@@ -7,6 +7,16 @@ struct MpvError: Error, CustomStringConvertible {
     var description: String { String(cString: mpv_error_string(code)) }
 }
 
+struct MpvProperty {
+    let name: String
+    let format: mpv_format
+
+    init(_ name: String, _ format: mpv_format) {
+        self.name = name
+        self.format = format
+    }
+}
+
 enum MpvPropertyValue: Equatable {
     case double(Double)
     case flag(Bool)
@@ -107,6 +117,10 @@ final class Mpv {
 
     func continueHook(_ id: UInt64) {
         mpv_hook_continue(handle, id)
+    }
+
+    func observe(_ property: MpvProperty) {
+        observe(property.name, format: property.format)
     }
 
     func observe(_ name: String, format: mpv_format) {

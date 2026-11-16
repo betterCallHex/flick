@@ -217,7 +217,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     }
 
     @objc func toggleSubtitles(_ sender: Any?) {
-        let wasShowing = player.state.isShowingSubtitles
+        let wasShowing = player.state.subtitles.isShowing
         player.toggleSubtitles()
         showHud(wasShowing ? "Subtitles Off" : "Subtitles On")
     }
@@ -242,8 +242,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         case #selector(paste(_:)), #selector(toggleLibrary(_:)), #selector(addFilesToLibrary(_:)), #selector(addLinkToLibrary(_:)):
             return true
         case #selector(toggleSubtitles(_:)):
-            menuItem.state = player.state.isShowingSubtitles ? .on : .off
-            return player.state.hasSubtitles
+            menuItem.state = player.state.subtitles.isShowing ? .on : .off
+            return player.state.subtitles.hasSubtitles
         default:
             return hasFile && libraryView.isHidden
         }
@@ -326,7 +326,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         if let failure = state.loadFailure, previousState.loadFailure == nil, let url = state.url {
             showLoadFailure(failure, for: url)
         }
-        if let size = state.videoSize, !size.hasSameShape(as: displayedVideoSize) {
+        if let size = state.shape.size, !size.hasSameShape(as: displayedVideoSize) {
             displayedVideoSize = size
             fit(to: size)
         }
@@ -618,14 +618,6 @@ extension ScrollInput {
         if event.phase.contains(.began) || event.phase.contains(.mayBegin) { return .began }
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) { return .ended }
         return .changed
-    }
-}
-
-extension CGSize {
-    func hasSameShape(as other: CGSize?) -> Bool {
-        guard let other, other.height > 0, height > 0 else { return false }
-        let tolerance = 0.01
-        return abs(width / height - other.width / other.height) <= tolerance * (other.width / other.height)
     }
 }
 

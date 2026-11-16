@@ -58,8 +58,8 @@ final class ControlsView: NSView {
         remainingLabel.stringValue = "-" + remaining.clockText
         scrubber.setProgress(state.progress)
         showQualityChoice(QualityChoice(state))
-        subtitlesButton.isHidden = !state.hasSubtitles
-        let isShowing = state.isShowingSubtitles
+        subtitlesButton.isHidden = !state.subtitles.hasSubtitles
+        let isShowing = state.subtitles.isShowing
         subtitlesButton.image = Self.symbol(
             isShowing ? "captions.bubble.fill" : "captions.bubble",
             label: isShowing ? "Hide Subtitles" : "Show Subtitles"
@@ -211,9 +211,9 @@ struct QualityChoice: Equatable {
     init() {}
 
     init(_ state: PlaybackState) {
-        resolutions = state.resolutions
-        maxResolution = state.maxResolution
-        playingResolution = min(state.videoWidth, state.videoHeight)
+        resolutions = state.quality.resolutions
+        maxResolution = state.quality.maxResolution
+        playingResolution = state.shape.shortSide
     }
 
     var title: String {
