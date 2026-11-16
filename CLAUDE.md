@@ -1,3 +1,7 @@
+## Checking a change in the running app
+
+Run it with `scripts/drive.sh` (muted, in the background, its own data) and drive it with `agent-desktop`; `scripts/drive.sh stop` before you finish. See the Build section of `README.md`.
+
 ## Agent skills
 
 ### Issue tracker

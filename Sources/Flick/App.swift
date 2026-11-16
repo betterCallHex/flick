@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let firstFrameProbeVariable = "FLICK_FIRST_FRAME_FILE"
     static let playableContentTypes: [UTType] = [.movie, .video, .audiovisualContent, .audio]
 
+    private let launch = LaunchEnvironment(environment: ProcessInfo.processInfo.environment)
     private var controller: PlayerWindowController?
     private var player: Player?
     private var firstFrameProbe: FirstFrameProbe?
@@ -44,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let controller, !controller.hasFile else { return }
         controller.showLibrary()
+        guard !launch.isDriven else { return }
         NSApp.activate()
     }
 
@@ -79,28 +81,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startPlayer() throws {
         let defaults = UserDefaults.standard
         let options = Player.options(
-            watchLaterDirectory: Self.watchLaterDirectory,
+            watchLaterDirectory: launch.watchLaterDirectory,
             volume: defaults.double(forKey: Self.volumeKey),
-            showsSubtitles: defaults.bool(forKey: Self.subtitlesKey)
+            showsSubtitles: defaults.bool(forKey: Self.subtitlesKey),
+            isMuted: launch.isDriven
         )
         let mpv = try Mpv(options: options)
         let player = Player(mpv: mpv)
         let videoLayer = try VideoLayer(mpv: mpv)
         self.player = player
-        let library = Library(file: Self.libraryFile)
+        let library = Library(file: launch.libraryFile)
         let controller = PlayerWindowController(player: player, library: library, videoLayer: videoLayer)
         self.controller = controller
         firstFrameProbe = FirstFrameProbe(environment: ProcessInfo.processInfo.environment)
         firstFrameProbe?.attach(to: videoLayer, controller: controller)
     }
+}
 
-    private static var watchLaterDirectory: URL {
-        URL.applicationSupportDirectory.appending(components: "Flick", "watch_later")
+struct LaunchEnvironment {
+    static let driveDirectoryVariable = "FLICK_DRIVE_DIR"
+
+    let dataDirectory: URL
+    let isDriven: Bool
+
+    init(environment: [String: String]) {
+        guard let path = environment[Self.driveDirectoryVariable] else {
+            dataDirectory = URL.applicationSupportDirectory.appending(component: "Flick")
+            isDriven = false
+            return
+        }
+        dataDirectory = URL(fileURLWithPath: path, isDirectory: true)
+        isDriven = true
     }
 
-    private static var libraryFile: URL {
-        URL.applicationSupportDirectory.appending(components: "Flick", "library.json")
-    }
+    var watchLaterDirectory: URL { dataDirectory.appending(component: "watch_later") }
+    var libraryFile: URL { dataDirectory.appending(component: "library.json") }
 }
 
 enum LinkPrompt {

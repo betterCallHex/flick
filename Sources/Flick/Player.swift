@@ -68,6 +68,7 @@ final class Player {
         watchLaterDirectory: URL,
         volume: Double,
         showsSubtitles: Bool = true,
+        isMuted: Bool = false,
         subtitleLanguages: [String] = Locale.preferredLanguages
     ) -> [(name: String, value: String)] {
         [
@@ -95,6 +96,7 @@ final class Player {
             ("watch-later-options", "start,aid,sid,sub-delay,audio-delay"),
             ("volume-max", "100"),
             ("volume", String(volume)),
+            ("mute", isMuted ? "yes" : "no"),
         ]
     }
 
