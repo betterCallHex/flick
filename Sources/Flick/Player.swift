@@ -81,6 +81,7 @@ final class Player {
     var webLoadTimeoutSeconds = 20.0
     let mpv: Mpv
     private var loadGeneration = 0
+    private var refusedStreamReloadsLeft = 0
 
     static func options(
         watchLaterDirectory: URL,
@@ -135,6 +136,7 @@ final class Player {
         saveResumePoint()
         state = state.startingNewFile(url)
         onStateChange?(state)
+        refusedStreamReloadsLeft = 1
         load(url, retriesLeft: 1)
     }
 
@@ -147,6 +149,7 @@ final class Player {
         }
         state.isLoading = true
         onStateChange?(state)
+        refusedStreamReloadsLeft = 1
         load(url, retriesLeft: 1, startingAt: state.position)
     }
 
@@ -224,6 +227,8 @@ final class Player {
             mpv.continueHook(id)
         case .loadFailed:
             fail(.unplayable)
+        case .streamRefused:
+            reloadRefusedStream()
         case let .propertyChanged(name, .integer) where VideoShape.isObserved(name):
             state.shape = VideoShape(reading: mpv) ?? state.shape
             onStateChange?(state)
@@ -231,6 +236,19 @@ final class Player {
             state.apply(value, to: name)
             onStateChange?(state)
         }
+    }
+
+    private func reloadRefusedStream() {
+        guard let url = state.url, !state.isLoading, state.loadFailure == nil else { return }
+        guard refusedStreamReloadsLeft > 0 else {
+            mpv.command("stop")
+            fail(.unplayable)
+            return
+        }
+        refusedStreamReloadsLeft -= 1
+        state.isLoading = true
+        onStateChange?(state)
+        load(url, retriesLeft: 1, startingAt: state.position)
     }
 
     private func load(_ url: URL, retriesLeft: Int, startingAt start: Double? = nil) {
