@@ -22,26 +22,42 @@ jobs:
   test:
     runs-on: macos-15
     timeout-minutes: 15
+    env:
+      BREW_FORMULAS: mpv pkg-config ffmpeg
     steps:
       - uses: actions/checkout@v4
+      - id: image
+        run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/brew.tar
+          key: brew-${{ runner.arch }}-${{ steps.image.outputs.version }}-${{ env.BREW_FORMULAS }}-${{ hashFiles('scripts/ci-brew.sh') }}
       - uses: actions/cache@v4
         with:
           path: .build
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
-      - run: brew install mpv pkg-config ffmpeg
+      - run: scripts/ci-brew.sh ~/brew.tar $BREW_FORMULAS
       - run: make test
 
   test-web:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 30
+    env:
+      BREW_FORMULAS: mpv pkg-config yt-dlp ffmpeg
     steps:
       - uses: actions/checkout@v4
+      - id: image
+        run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/brew.tar
+          key: brew-${{ runner.arch }}-${{ steps.image.outputs.version }}-${{ env.BREW_FORMULAS }}-${{ hashFiles('scripts/ci-brew.sh') }}
       - uses: actions/cache@v4
         with:
           path: .build
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
-      - run: brew install mpv pkg-config yt-dlp ffmpeg
+      - run: scripts/ci-brew.sh ~/brew.tar $BREW_FORMULAS
       - run: make test-web
