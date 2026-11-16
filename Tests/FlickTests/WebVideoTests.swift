@@ -110,16 +110,16 @@ struct WebPlaybackTests {
         let switched = try await retryingWhenYouTubeRefusesAStream {
             let session = try HeadlessSession(watchLater: try temporaryDirectory())
             let opened = try await session.open(URL(string: "https://www.youtube.com/watch?v=aqz-KE-bpKQ")!, timeout: .seconds(30))
-            #expect(opened.resolutions.contains(360))
+            #expect(opened.quality.resolutions.contains(360))
             session.perform { $0.seek(to: 60, precise: true) }
             try await session.waitUntil { abs($0.position - 60) < 1 }
 
             session.perform { $0.limitResolution(to: 360) }
 
-            return try await session.waitUntil(timeout: .seconds(30)) { !$0.isLoading && $0.videoHeight == 360 }
+            return try await session.waitUntil(timeout: .seconds(30)) { !$0.isLoading && $0.shape.height == 360 }
         }
         #expect(abs(switched.position - 60) < 2)
-        #expect(switched.maxResolution == 360)
+        #expect(switched.quality.maxResolution == 360)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["FLICK_NETWORK_TESTS"] != nil))
@@ -133,7 +133,7 @@ struct WebPlaybackTests {
     func playsALoomVideoServedAsHLS() async throws {
         let session = try HeadlessSession(watchLater: try temporaryDirectory())
         let playing = try await session.open(URL(string: "https://www.loom.com/share/56fde5f991b8490d9033dd226ebf3043")!, timeout: .seconds(30))
-        #expect(playing.videoSize != nil)
+        #expect(playing.shape.size != nil)
     }
 }
 

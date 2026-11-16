@@ -67,6 +67,8 @@ make dmg-background  # regenerate the DMG window background
 make release    # build, sign the update, publish a GitHub release, update the cask
 ```
 
+To try a build in the running app without taking over the screen, `scripts/drive.sh start [file-or-link]` launches a muted copy named FlickDrive in the background, with its own library and settings; `scripts/drive.sh shot out.png` screenshots its window and `scripts/drive.sh stop` quits it and deletes its data. Drive its controls with `agent-desktop` (`agent-desktop snapshot --app FlickDrive`).
+
 The app icon is 32×32 pixel art in four muted colours, drawn in code (`scripts/make-icon.swift`), clipped to Apple's icon shape so macOS shows it full size. To use other artwork, replace `Resources/AppIcon.icns`.
 
 To make Flick the default player: Finder → select a video → Get Info → Open with: Flick → Change All.
@@ -128,6 +130,7 @@ Controls, title bar and cursor fade out after 2 s of playback without mouse move
 - `Sources/Flick/ControlsView.swift`: control bar, scrubber, labels.
 - `Sources/Flick/Subtitles.swift`: subtitle track list, preferred-language pick, yt-dlp caption languages.
 - `Sources/Flick/WebVideo.swift`: link parsing, yt-dlp routing, CloudFront cookie fix, Homebrew PATH for yt-dlp.
-- `Sources/Flick/App.swift`: app delegate, menus (all keyboard shortcuts live here), Sparkle updater, first-frame probe used by `make bench`.
+- `Sources/Flick/App.swift`: app delegate, menus (all keyboard shortcuts live here), Sparkle updater, first-frame probe used by `make bench`, `FLICK_DRIVE_DIR` launch mode used by `scripts/drive.sh`.
 - `scripts/bundle-libs.py`: copies libmpv and its Homebrew dependencies into the app.
+- `scripts/drive.sh`: muted background copy of the app for agents and manual checks; `scripts/window-id.swift` finds its window.
 - `scripts/release.sh`: zips the app, signs the appcast, builds the DMG, publishes the GitHub release and updates the Homebrew cask.
